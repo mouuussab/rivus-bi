@@ -363,13 +363,8 @@ export class CommonUtil {
 
   public static setThemeCss(theme: Theme): void {
     const $body = $('body');
-    if (theme === Theme.DARK) {
-      $body.addClass(Theme.DARK);
-    } else {
-      if ($body.hasClass(Theme.DARK)) {
-        $body.removeClass(Theme.DARK);
-      }
-    }
+    $body.removeClass(Theme.DARK);
+    if (theme) {}
   }
 
   public static isNullOrUndefined(val): boolean {
