@@ -363,7 +363,7 @@ export class CommonUtil {
 
   public static setThemeCss(theme: Theme): void {
     const $body = $('body');
-    $body.removeClass(Theme.DARK);
+    $body.addClass(Theme.DARK);
     if (theme) {}
   }
 
