@@ -1,0 +1,101 @@
+<!--
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<div class="ddp-ui-chart-side ddp-show">
+  <div class="ddp-ui-side-title">
+    {{'msg.page.calc.option.title' | translate}}
+  </div>
+  <!-- downmenu -->
+  <div class="ddp-wrap-downmenu">
+    <div class="ddp-box-down">
+      <!-- divide -->
+      <div class="ddp-wrap-divide ">
+        <!--  divide -->
+        <div class="ddp-divide2">
+          <!-- 연산 행 표시 -->
+          <div class="ddp-wrap-option-slider">
+            <span class="ddp-label-slider">{{'msg.page.calc.show.calculated.row' | translate}}</span>
+            <div class="ddp-checkbox-slide ddp-checkbox-automatic2">
+              <input type="checkbox"
+                     placeholder="{{'msg.comm.ui.placeholder.label' | translate}}"
+                     [ngModel]="uiOption['totalValueStyle']" [disabled]="'MASTER' == uiOption['dataType']"
+                     (click)="toggleRow()">
+              <label><span class="ddp-slide"></span></label>
+            </div>
+          </div>
+
+          <calc-option-slider *ngIf="uiOption['totalValueStyle']"
+                             [totalValueStyle]="uiOption['totalValueStyle']" (onChanged)="onChangedRowConfig($event);">
+          </calc-option-slider>
+          <!-- // 연산 행 표시 -->
+
+          <!-- 부분 연산 행 표시 -->
+          <div class="ddp-wrap-option-slider">
+            <span class="ddp-label-slider">{{'msg.page.calc.show.calculated.partial-row' | translate}}</span>
+            <div class="ddp-checkbox-slide ddp-checkbox-automatic2">
+              <input type="checkbox"
+                     placeholder="{{'msg.comm.ui.placeholder.label' | translate}}"
+                     [ngModel]="uiOption['subTotalValueStyle']" [disabled]="'MASTER' == uiOption['dataType']"
+                     (click)="togglePartialRow()">
+              <label><span class="ddp-slide"></span></label>
+            </div>
+          </div>
+
+          <calc-option-slider *ngIf="uiOption['subTotalValueStyle']"
+                              [totalValueStyle]="uiOption['subTotalValueStyle']" (onChanged)="onChangedPartialRowConfig($event);">
+          </calc-option-slider>
+          <!-- // 부분 연산 행 표시 -->
+
+          <!-- 연산 열 표시 -->
+          <div class="ddp-wrap-option-slider">
+            <span class="ddp-label-slider">{{'msg.page.calc.show.calculated.column' | translate}}</span>
+            <div class="ddp-checkbox-slide ddp-checkbox-automatic2">
+              <input type="checkbox"
+                     placeholder="{{'msg.comm.ui.placeholder.label' | translate}}"
+                     [ngModel]="uiOption['showCalculatedColumnStyle']" [disabled]="'MASTER' == uiOption['dataType']"
+                     (click)="toggleColumn()">
+              <label><span class="ddp-slide"></span></label>
+            </div>
+          </div>
+
+          <calc-option-slider *ngIf="uiOption['showCalculatedColumnStyle']"
+                             [totalValueStyle]="uiOption['showCalculatedColumnStyle']" (onChanged)="onChangedColumnConfig($event);">
+          </calc-option-slider>
+          <!-- // 연산 열 표시 -->
+
+          <!-- 부분 연산 열 표시 -->
+          <div class="ddp-wrap-option-slider">
+            <span class="ddp-label-slider">{{'msg.page.calc.show.calculated.partial-column' | translate}}</span>
+            <div class="ddp-checkbox-slide ddp-checkbox-automatic2">
+              <input type="checkbox"
+                     placeholder="{{'msg.comm.ui.placeholder.label' | translate}}"
+                     [ngModel]="uiOption['subTotalColumnStyle']" [disabled]="'MASTER' == uiOption['dataType']"
+                     (click)="togglePartialColumn()">
+              <label><span class="ddp-slide"></span></label>
+            </div>
+          </div>
+
+          <calc-option-slider *ngIf="uiOption['subTotalColumnStyle']"
+                              [totalValueStyle]="uiOption['subTotalColumnStyle']" (onChanged)="onChangedPartialColumnConfig($event);">
+          </calc-option-slider>
+          <!-- // 부분 연산 열 표시 -->
+
+        </div>
+        <!--  // divide -->
+      </div>
+      <!-- // divide -->
+    </div>
+  </div>
+  <!-- // downmenu -->
+</div>

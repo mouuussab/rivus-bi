@@ -1,0 +1,3794 @@
+// noinspection TypeScriptValidateJSTypes,JSUnusedAssignment,JSMethodCanBeStatic,JSUnusedLocalSymbols,JSUnusedAssignment
+
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import {
+  AfterContentInit,
+  AfterViewInit,
+  Component,
+  ElementRef,
+  EventEmitter,
+  HostListener,
+  Injector,
+  Input,
+  OnDestroy,
+  Output,
+  ViewChild,
+} from '@angular/core';
+import {BaseChart, ChartSelectInfo} from '../../base-chart';
+import {Pivot} from '@domain/workbook/configurations/pivot';
+import {UIMapOption} from '../../option/ui-option/map/ui-map-chart';
+import {
+  HeatmapColorList,
+  MapBy,
+  MapGeometryType,
+  MapLayerStyle,
+  MapLayerType,
+  MapLineStyle,
+  MapSymbolType,
+  MapThickness,
+  SelectionColor,
+} from '../../option/define/map/map-common';
+import {ColorRange} from '../../option/ui-option/ui-color';
+import {
+  ChartColorList,
+  ChartSelectMode,
+  ChartType,
+  EventType,
+  ShelveFieldType,
+  UIPosition,
+} from '../../option/define/common';
+import {UISymbolLayer} from '../../option/ui-option/map/ui-symbol-layer';
+import {UIChartColorByDimension, UIChartZoom, UILayers, UIOption,} from '../../option/ui-option';
+import * as _ from 'lodash';
+import {BaseOption} from '../../option/base-option';
+import {FormatOptionConverter} from '../../option/converter/format-option-converter';
+import {UILineLayer} from '../../option/ui-option/map/ui-line-layer';
+import {Field as AbstractField, Field,} from '../../../../../domain/workbook/configurations/field/field';
+import {Shelf} from '@domain/workbook/configurations/shelf/shelf';
+import {FieldRole, LogicalType} from '@domain/datasource/datasource';
+import {GeoField} from '@domain/workbook/configurations/field/geo-field';
+import {TooltipOptionConverter} from '../../option/converter/tooltip-option-converter';
+import {ChartUtil} from '../../option/util/chart-util';
+import {isNullOrUndefined, isUndefined} from 'util';
+import {UIHeatmapLayer} from '../../option/ui-option/map/ui-heatmap-layer';
+import {UIPolygonLayer} from '../../option/ui-option/map/ui-polygon-layer';
+import {ColorOptionConverter} from '../../option/converter/color-option-converter';
+import {CommonConstant} from '@common/constant/common.constant';
+import {StringUtil} from '@common/util/string.util';
+
+declare let ol;
+declare const html2canvas: any;
+
+@Component({
+  selector: 'map-chart',
+  templateUrl: 'map-chart.component.html'
+})
+export class MapChartComponent extends BaseChart<UIMapOption> implements AfterViewInit, AfterContentInit, OnDestroy {
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Private Variables
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  // Map element
+  @ViewChild('mapArea', {static: true})
+  private area: ElementRef;
+  private $area: any;
+
+  // Tooltip element
+  @ViewChild('tooltip')
+  private tooltipEl: ElementRef;
+
+  @ViewChild('marker')
+  private markerEl: ElementRef;
+
+  // Feature icon element
+  @ViewChild('feature', {static: true})
+  private featureEl: ElementRef;
+
+  private _propMapConf = sessionStorage.getItem(CommonConstant.PROP_MAP_CONFIG);
+  private _customMapLayers: { name: string, layer: any, isDefault: boolean }[] = [];
+
+  @Input('needToRemoveMapLayer')
+  set removeAllLayer(isChartShow: boolean) {
+    if (isChartShow === false) {
+      if (this.olmap) {
+        this.layerMap.forEach(item => this.olmap.removeLayer(item.layerValue));
+        this.layerMap = [];
+        this.olmap.removeLayer(this.osmLayer);
+        this.olmap.removeLayer(this.cartoDarkLayer);
+        this.olmap.removeLayer(this.cartoPositronLayer);
+        this._customMapLayers.forEach(item => this.olmap.removeLayer(item.layer));
+      }
+    }
+  }
+
+  // previous zoom size
+  private preZoomSize: number = 0;
+
+  private _markerLayers: { layer : any, element : any}[] = [];
+
+  private _isChangedZoom: boolean = false;
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Protected Variables
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Public Variables
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  // Map Object
+  public olmap: any = undefined;
+
+  // OSM Layer
+  public osmLayer = new ol.layer.Tile({
+    preload: Infinity,
+    source: new ol.source.OSM({
+      attributions: this.attribution(),
+      crossOrigin: 'anonymous'
+    })
+  });
+
+  public cartoPositronLayer = new ol.layer.Tile({
+    preload: Infinity,
+    source: new ol.source.XYZ({
+      url: 'http://{1-4}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+      attributions: this.attribution(),
+      crossOrigin: 'anonymous'
+    })
+  });
+
+  // Carto Dark Layer
+  public cartoDarkLayer = new ol.layer.Tile({
+    preload: Infinity,
+    source: new ol.source.XYZ({
+      url: 'http://{1-4}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
+      attributions: this.attribution(),
+      crossOrigin: 'anonymous'
+    })
+  });
+
+  public layerMap: any = [];
+
+  // Tooltip layer
+  public tooltipLayer = undefined;
+
+  // Tooltip info
+  public tooltipInfo = {
+    enable: false,
+    geometryType: String(MapGeometryType.POINT),
+    num: 1,
+    name: null,
+    title: 'Geo info',
+    coords: [],
+    fields: []
+  };
+
+  // Legend info
+  public legendInfo = {
+    enable: true,
+    position: String(UIPosition.RIGHT_BOTTOM),
+    layer: [
+      // {
+      //   name: 'Layer 1',
+      //   type: MapLayerType.SYMBOL,
+      //   pointType: MapSymbolType.CIRCLE,
+      //   color: [{
+      //     color: '#FFFFFF',
+      //     column: 'gis'
+      //   }]
+      // }
+    ],
+    // click legend (show / hide)
+    showFl: true
+  };
+
+  // 화면을 다시 그려줄 경우
+  @Output('changeDraw')
+  public changeDrawEvent: EventEmitter<any> = new EventEmitter();
+
+  // 화면을 다시 그려줄 경우
+  @Output('shelf')
+  public shelfEvent: EventEmitter<any> = new EventEmitter();
+
+  // resize 이벤트
+  public isResize: boolean = false;
+
+  // 데이터 조회 여부
+  public isLoadData: boolean = true;
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Constructor
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  // 생성자
+  constructor(
+    protected elementRef: ElementRef,
+    protected injector: Injector) {
+    super(elementRef, injector);
+    $( elementRef.nativeElement )
+      .delegate('.sys-marker', 'mouseenter', (event) => {
+        let $target = $( event.target );
+        $target = $target.closest('.ol-overlay-container');
+        $target.css({ 'z-index' : 200 });
+      })
+      .delegate('.sys-marker', 'mouseleave', (event) => {
+        let $target = $( event.target );
+        $target = $target.closest('.ol-overlay-container');
+        $target.css({ 'z-index' : 15 });
+      });
+  }
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Override Method
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  // Component destory
+  public ngOnDestroy() {
+    super.ngOnDestroy();
+    (this.layerMap) && (this.layerMap.forEach(item => item.layerValue.setSource(undefined)));
+    (this.osmLayer) && (this.osmLayer.setSource(undefined));
+    (this.cartoPositronLayer) && (this.cartoPositronLayer.setSource(undefined));
+    (this.cartoDarkLayer) && (this.cartoDarkLayer.setSource(undefined));
+    (this._customMapLayers) && (this._customMapLayers.forEach(item => item.layer.setSource(undefined)));
+
+    if (this.olmap) {
+      this.olmap.getLayers().getArray().forEach((layer) => {
+        if ('function' === typeof layer.setSource) {
+          layer.setSource(undefined);
+        }
+        this.olmap.removeLayer(layer);
+      });
+      this.olmap.getOverlays().forEach((overlay) => this.olmap.removeOverlay(overlay));
+      this.olmap.getControls().forEach((control) => this.olmap.removeControl(control));
+      this.olmap.setTarget(null);
+      this.olmap = undefined;
+    }
+  } // function - ngOnDestroy
+
+  // After View Init
+  public ngAfterViewInit(): void {
+    this.chart = this.area;
+    if (this._propMapConf) {
+
+      const objConf = JSON.parse(this._propMapConf);
+      if (objConf.baseMaps) {
+        this._customMapLayers
+          = objConf.baseMaps.map(item => {
+          return {
+            name: item.name,
+            layer: new ol.layer.Tile({
+              source: new ol.source.XYZ({
+                url: item.url,
+                attributions: this.attribution(),
+                crossOrigin: 'anonymous'
+              })
+            }),
+            isDefault: (objConf.defaultBaseMap === item.name)
+          }
+        });
+      }
+    }
+
+    // 외부 필터 설정
+    this.subscriptions.push(
+      this.broadCaster.on<any>('SET_GLOBAL_FILTER').subscribe(() => {
+        this._isChangedZoom = false;
+      })
+    );
+    // 선택 필터 설정
+    this.subscriptions.push(
+      this.broadCaster.on<any>('SET_SELECTION_FILTER').subscribe(() => {
+        this._isChangedZoom = false;
+      })
+    );
+  }
+
+  // After Content Init
+  public ngAfterContentInit(): void {
+
+    // Area
+    this.$area = $(this.area.nativeElement);
+
+    // when cursor moves to another chart, hide tooltip
+    $(this.area.nativeElement).on({
+      mouseleave: () => {
+        if (!_.isUndefined(this.tooltipLayer) && this.tooltipLayer.length > 0) {
+          this.tooltipLayer.setPosition(undefined);
+        }
+      }
+    });
+
+    // Feature icon element
+    const canvas = this.featureEl.nativeElement;
+    canvas.width = 30;
+    canvas.height = 20;
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#7E94DE';
+    this.roundRect(context, 0, 0, canvas.width, canvas.height, 4, true, false);
+  }
+
+  private roundRect(context, x, y, width, height, radius, fill, stroke): void {
+
+    if (typeof radius === 'undefined') {
+      radius = 5;
+    }
+    if (typeof radius === 'number') {
+      radius = {tl: radius, tr: radius, br: radius, bl: radius};
+    } else {
+      const defaultRadius = {tl: 0, tr: 0, br: 0, bl: 0};
+      for (const side in defaultRadius) {
+        if (side) {
+          radius[side] = radius[side] || defaultRadius[side];
+        }
+      }
+    }
+    context.beginPath();
+    context.moveTo(x + radius.tl, y);
+    context.lineTo(x + width - radius.tr, y);
+    context.quadraticCurveTo(x + width, y, x + width, y + radius.tr);
+    context.lineTo(x + width, y + height - radius.br);
+    context.quadraticCurveTo(x + width, y + height, x + width - radius.br, y + height);
+    context.lineTo(x + radius.bl, y + height);
+    context.quadraticCurveTo(x, y + height, x, y + height - radius.bl);
+    context.lineTo(x, y + radius.tl);
+    context.quadraticCurveTo(x, y, x + radius.tl, y);
+    context.closePath();
+    if (fill) {
+      context.fill();
+    }
+    if (stroke) {
+      context.stroke();
+    }
+  }
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Public Method
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  /**
+   * Shelf Valid Check
+   * 선반 전체 부분을 체크
+   * @param _pivot
+   * @param shelf
+   */
+  public isValid(_pivot: Pivot, shelf: Shelf): boolean {
+
+    if (!shelf) return false;
+
+    let valid: boolean = false;
+
+    if (shelf.layers) {
+
+      for (let index: number = 0, nMax = shelf.layers.length; index < nMax; index++) {
+        const fields: Field[] = shelf.layers[index].fields;
+        for (const layer of fields) {
+          if (layer.field && layer.field.logicalType && -1 !== layer.field.logicalType.toString().indexOf('GEO')) {
+            valid = true;
+          }
+        }
+      }
+    }
+    return valid;
+  }
+
+  /**
+   * Shelf current field Valid Check
+   * 현재 선반의 필드를 체크
+   * @param shelf
+   * @returns {boolean}
+   */
+  public isCurrentShelfValid(shelf: Shelf): boolean {
+
+    if (!shelf) return false;
+
+    let valid: boolean = false;
+
+    for (let layerIndex = 0; shelf.layers.length > layerIndex; layerIndex++) {
+      const fields: Field[] = shelf.layers[layerIndex].fields;
+      if (fields) {
+        for (const layer of fields) {
+          if (layer.field && layer.field.logicalType && -1 !== layer.field.logicalType.toString().indexOf('GEO')) {
+            valid = true;
+            break;
+          }
+        }
+      }
+    }
+
+    return valid;
+  }
+
+  /**
+   * Map chart draw
+   * @param isKeepRange
+   */
+  public draw(isKeepRange?: boolean): void {
+
+    // point re-size from map point type
+    if (isKeepRange === false && !_.isUndefined(this.uiOption['isChangeStyle']) && this.uiOption['isChangeStyle']) {
+      this.changePointSize();
+      delete this.uiOption['isChangeStyle'];
+      return;
+    }
+
+    this.isResize = false;
+
+    // analysis
+    if (!_.isUndefined(this.getUiMapOption().analysis) && !_.isUndefined(this.getUiMapOption().analysis['use'])
+      && this.getUiMapOption().analysis['use'] === true
+      && this.getUiMapOption().layerNum === this.getUiMapOption().layers.length - 1) {
+      // 공간연산 재실행 여부
+      if (this.drawByType === EventType.MAP_SPATIAL_REANALYSIS) {
+        this.layerMap.forEach((item) => {
+          if (item.id === this.getUiMapOption().layerNum) {
+            this.olmap.removeLayer(item.layerValue)
+          }
+        });
+      }
+      this.drawAnalysis();
+      return;
+    }
+
+    ////////////////////////////////////////////////////////
+    // Valid Check
+    ////////////////////////////////////////////////////////
+    if (!this.isValid(this.pivot, this.shelf)) {
+      // No Data 이벤트 발생
+      this.data.show = false;
+      this.noData.emit();
+      return;
+    }
+
+    if (!this.isCurrentShelfValid(this.shelf)) {
+      this.removeLayer(this.getUiMapOption().layerNum);
+    }
+
+    ////////////////////////////////////////////////////////
+    // Check option (spec)
+    ////////////////////////////////////////////////////////
+
+    this.checkOption(this.getUiMapOption());
+
+    ////////////////////////////////////////////////////////
+    // set min / max
+    ////////////////////////////////////////////////////////
+
+    this.setMinMax();
+
+    ////////////////////////////////////////////////////////
+    // Creation map & layer
+    ////////////////////////////////////////////////////////
+
+    // 엘리먼트 반영
+    this.safelyDetectChanges();
+
+    // Show data
+    this.data.show = true;
+
+    // reset legend data
+    this.legendInfo.layer = [];
+
+    // Is map creation
+    const isMapCreation: boolean = this.createMap();
+
+    for (let layerIndex = 0; layerIndex < this.getUiMapOption().layers.length; layerIndex++) {
+
+      // Source
+      const source = new ol.source.Vector({crossOrigin: 'anonymous'});
+
+      // Line & Polygon Source
+      const emptySource = new ol.source.Vector();
+
+      // 데이터가 없는경우 dummy data 추가
+      if (this.data.length !== this.getUiMapOption().layers.length && !this.isGeoFieldCheck(this.shelf.layers, layerIndex)) {
+        if (layerIndex === 0) {
+          this.data = _.concat({features: []}, this.data[0]);
+        }
+      }
+
+      // Creation feature
+      this.createFeature(source, layerIndex);
+
+      // Creation layer
+      this.createLayer(source, emptySource, isMapCreation, layerIndex);
+
+      // Creation legend
+      this.createLegend(layerIndex, false);
+    }
+
+    // Creation tooltip and Zoom
+    this.createMapOverLayEvent();
+
+    // Chart resize
+    if (this.drawByType != null || !_.isEmpty(this.drawByType)) {
+      this.olmap.updateSize();
+    }
+
+    ////////////////////////////////////////////////////////
+    // Apply
+    ////////////////////////////////////////////////////////
+    // 완료
+    this.drawFinished.emit();
+
+    ////////////////////////////////////////////////////////
+    // add Selection event
+    ////////////////////////////////////////////////////////
+
+    if (!this.isPage) {
+      this.selection();
+    }
+  }
+
+  /**
+   * Get map UI option
+   */
+  public getUiMapOption(): UIMapOption {
+    return this.uiOption as UIMapOption;
+  }
+
+  public resize(): void {
+    this.isResize = true;
+    this.onResize(null);
+  }
+
+  /**
+   * fold / unfold legend (dashboard)
+   */
+  public changeFoldLegend() {
+
+    if (!this.isPage) {
+      this.legendInfo.showFl = !this.legendInfo.showFl;
+    }
+  }
+
+  public toggleLoadData(): void {
+    this.isLoadData = !this.isLoadData;
+    if( this.isLoadData ) {
+      this.changeDrawEvent.emit();
+    }
+  }
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Protected Method
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  /**
+   * 차트에 옵션 반영
+   * - Echart기반 차트가 아닐경우 Override 필요
+   * @param _initFl 차트 초기화 여부
+   */
+  protected apply(_initFl: boolean = true): void {
+
+  }
+
+  /**
+   * 차트의 기본 옵션을 생성한다.
+   * - 각 차트에서 Override
+   */
+  protected initOption(): BaseOption {
+
+    return {
+      type: ChartType.MAP,
+      series: []
+    };
+  }
+
+  /**
+   * 시리즈 정보를 변환한다.
+   * - 필요시 각 차트에서 Override
+   * @returns {BaseOption}
+   */
+  protected convertSeries(): BaseOption {
+    return this.chartOption;
+  }
+
+  /**
+   * 셀렉션 이벤트를 등록한다.
+   * - 필요시 각 차트에서 Override
+   */
+  protected selection(): void {
+
+    // heatmap => no selection filter
+    if (MapLayerType.HEATMAP === this.getUiMapOption().layers[this.getUiMapOption().layerNum].type) {
+      return;
+    }
+
+    this.addChartSelectEventListener();
+    // this.addChartMultiSelectEventListener();
+  }
+
+  /**
+   * map - single feature selection filter
+   */
+  public addChartSelectEventListener() {
+    this.olmap.on('singleclick', this.mapSelectionListener);
+  }
+
+  /**
+   * map - multi features selection filter
+   */
+  public addChartMultiSelectEventListener() {
+
+  }
+
+  /**
+   * 차트 Resize
+   *
+   * @param _event
+   */
+  @HostListener('window:resize', ['$event'])
+  public onResize(_event) {
+    if (this.olmap) {
+      this.olmap.updateSize();
+
+      // TODO change minZoom
+      // let minZoom = this.getMinZoom();
+      //
+      // if (this.olmap.getView().getMinZoom() !== minZoom) {
+      //   this.olmap.getView().setMinZoom(minZoom);
+      // }
+    }
+  }
+
+  /**
+   * 차트가 그려진 후 UI에 필요한 옵션 설정 - 차원값 리스트
+   *
+   */
+  protected setDimensionList(): UIOption {
+    const shelve: any = [];
+    for (let layerIndex = 0; this.getUiMapOption().layers.length > layerIndex; layerIndex++) {
+      if (this.shelf && !_.isUndefined(this.shelf.layers[layerIndex])) {
+        this.shelf.layers[layerIndex].fields.forEach((field) => {
+          shelve.push(field);
+        });
+      }
+    }
+    // 선반값에서 해당 타입에 해당하는값만 name string값으로 리턴
+    const getShelveReturnString = ((shelveList: any, typeList: ShelveFieldType[]): string[] => {
+      const resultList: string[] = [];
+      shelveList.map((item) => {
+        if ((_.eq(item.type, typeList[0]) || _.eq(item.type, typeList[1])) && (item.field && item.field.logicalType && -1 === item.field.logicalType.indexOf('GEO'))) {
+          resultList.push(item.name);
+        }
+      });
+      return resultList;
+    });
+
+    // 색상지정 기준 필드리스트 설정, 기본 필드 설정
+    this.uiOption.fieldList = getShelveReturnString(shelve, [ShelveFieldType.DIMENSION, ShelveFieldType.TIMESTAMP]);
+    if (this.uiOption.color) {
+      // targetField 설정
+      const targetField = (this.uiOption.color as UIChartColorByDimension).targetField;
+      // targetField가 있을때
+      if (!_.isEmpty(targetField)) {
+        if (this.uiOption.fieldList.indexOf(targetField) < 0) (this.uiOption.color as UIChartColorByDimension).targetField = _.last(this.uiOption.fieldList);
+        // targetField가 없을때
+      } else {
+        // 마지막 필드를 타겟필드로 잡기
+        (this.uiOption.color as UIChartColorByDimension).targetField = _.last(this.uiOption.fieldList);
+      }
+    }
+    return this.uiOption;
+  }
+
+  /**
+   * 차트가 그려진 후 UI에 필요한 옵션 설정 - 측정값 리스트
+   *
+   */
+  protected setMeasureList(): UIOption {
+    const shelve: any = [];
+    for (let layerIndex = 0; this.getUiMapOption().layers.length > layerIndex; layerIndex++) {
+      if (this.shelf && !_.isUndefined(this.shelf.layers[layerIndex])) {
+        this.shelf.layers[layerIndex].fields.forEach((field) => {
+          shelve.push(field);
+        });
+      }
+    }
+    // 선반값에서 해당 타입에 해당하는값만 field값으로 리턴
+    const getShelveReturnField = ((shelveList: any, typeList: ShelveFieldType[]): AbstractField[] => {
+      const resultList: AbstractField[] = [];
+      shelveList.map((item) => {
+        if ((_.eq(item.type, typeList[0]) || _.eq(item.type, typeList[1])) && (item.field && ('user_expr' === item.field.type || item.field.logicalType && -1 === item.field.logicalType.indexOf('GEO')))) {
+          resultList.push(item);
+        }
+      });
+      return resultList;
+    });
+    // 색상지정 기준 필드리스트 설정(measure list)
+    this.uiOption.fieldMeasureList = getShelveReturnField(shelve, [ShelveFieldType.MEASURE, ShelveFieldType.CALCULATED]);
+    // 색상지정 기준 필드리스트 설정(dimension list)
+    this.uiOption.fielDimensionList = getShelveReturnField(shelve, [ShelveFieldType.DIMENSION, ShelveFieldType.TIMESTAMP]);
+    return this.uiOption;
+  }
+
+  /*-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+  | Private Method
+  |-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+
+  /**
+   * Map chart creation
+   */
+  private createMap(): boolean {
+
+    ////////////////////////////////////////////////////////
+    // Set attribution
+    ////////////////////////////////////////////////////////
+    if( this.osmLayer.getSource() ) {
+      this.osmLayer.getSource().setAttributions(this.attribution());
+    }
+    if( this.cartoPositronLayer.getSource() ) {
+      this.cartoPositronLayer.getSource().setAttributions(this.attribution());
+    }
+    if( this.cartoDarkLayer.getSource() ) {
+      this.cartoDarkLayer.getSource().setAttributions(this.attribution());
+    }
+
+    ////////////////////////////////////////////////////////
+    // Map style
+    ////////////////////////////////////////////////////////
+    // Light (Default)
+    let layer;
+    if (0 < this._customMapLayers.length) {
+      layer = this._customMapLayers.find(item => item.isDefault);
+    }
+
+    switch (this.getUiMapOption().style) {
+      case MapLayerStyle.LIGHT.toString() :
+        // Light
+        layer = this.cartoPositronLayer;
+        break;
+      case MapLayerStyle.DARK.toString() :
+        // Dark
+        layer = this.cartoDarkLayer;
+        break;
+      case MapLayerStyle.COLORED.toString() :
+        // Colored
+        layer = this.osmLayer;
+        break;
+      default :
+        // Custom layer
+        const customLayer = this._customMapLayers.find(item => this.getUiMapOption().style === item.name);
+        if (customLayer) {
+          layer = customLayer.layer;
+        }
+    }
+
+    ////////////////////////////////////////////////////////
+    // Map creation
+    ////////////////////////////////////////////////////////
+
+    // if map is created before, delete all
+    if (this.olmap) {
+
+      this.layerMap.forEach(item => this.olmap.removeLayer(item.layerValue));
+      this.layerMap = [];
+
+      // // z index reset
+      // this.layerMap.forEach( item => {
+      //   item.layerValue.setZIndex(0);
+      // });
+
+      // Change map style (remove all layer)
+      this.olmap.removeLayer(this.osmLayer);
+      this.olmap.removeLayer(this.cartoDarkLayer);
+      this.olmap.removeLayer(this.cartoPositronLayer);
+
+      this._customMapLayers.forEach(item => this.olmap.removeLayer(item.layer));
+      this.olmap.addLayer(layer);
+      return false;
+    }
+
+    // Map object initialize
+    this.olmap = new ol.Map({
+      loadTilesWhileAnimating: true,
+      loadTilesWhileInteracting: true,
+      view: new ol.View({
+        center: [126, 37],
+        zoom: 6,
+        // zoom: this.getMinZoom(),
+        projection: 'EPSG:4326',
+        maxZoom: 20,
+        minZoom: 3,
+        // minZoom: this.getMinZoom()
+        // extent: [-7435794.111581946, -8766409.899970295, 8688138.383006273, 9314310.518718438]
+      }),
+      layers: [layer],
+      target: this.$area[0]
+    });
+    this.olmap.un('moveend');
+    this.olmap.on('moveend', this.zoomFunction);
+
+    for (let i = 0, nMax = document.getElementsByClassName('ol-attribution').length; i < nMax; i++) {
+      const element = document.getElementsByClassName('ol-attribution')[i] as HTMLElement;
+      element.style.right = 'auto';
+      element.style.left = '.5em';
+    }
+
+    // Chart resize
+    this.olmap.updateSize();
+
+    // Zoom slider
+    const zoomslider = new ol.control.ZoomSlider();
+    this.olmap.addControl(zoomslider);
+
+    // Is map creation
+    return true;
+  }
+
+  /**
+   * Creation map layer
+   */
+  private createLayer(source: any, emptySource: any, isMapCreation: boolean, layerIndex: number): void {
+    ////////////////////////////////////////////////////////
+    // Create layer
+    ////////////////////////////////////////////////////////
+    // Layer
+    const layer: UILayers = this.getUiMapOption().layers[layerIndex];
+    ////////////////////////////////////////////////////////
+    // Cluster & Point layer
+    ////////////////////////////////////////////////////////
+    let field = null;
+    _.each(this.shelf.layers[layerIndex].fields, (fieldTemp) => {
+      if (fieldTemp.field.logicalType && fieldTemp.field.logicalType.toString().indexOf('GEO') !== -1) {
+        field = fieldTemp;
+        return false;
+      }
+    });
+    let isLogicalType = false;
+    if (field != null && field.field != null && field.field.logicalType != null) {
+      isLogicalType = true;
+      const geomType = field.field.logicalType.toString();
+
+
+      if (_.eq(layer.type, MapLayerType.SYMBOL) || _.eq(layer.type, MapLayerType.CLUSTER)) {
+        const symbolLayer = new ol.layer.Vector({
+          source: _.eq(geomType, LogicalType.GEO_POINT) ? source : emptySource,
+          style: _.eq(geomType, LogicalType.GEO_POINT) ? this.pointStyleFunction(layerIndex, this.data) : new ol.style.Style()
+        });
+        // set z index (the default value is 0 and higher would be 1)
+        // this.symbolLayer.setZIndex(this.getUiMapOption().layerNum == num? 1 : 0);
+        symbolLayer.setZIndex(4);
+        this.layerMap.push({id: layerIndex, layerValue: symbolLayer});
+
+        // Init
+        if (isMapCreation && this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(symbolLayer);
+        } else {
+          if (this.getUiMapOption().showMapLayer) {
+            // Add layer
+            this.olmap.addLayer(symbolLayer);
+          } else {
+            // Remove layer
+            this.olmap.removeLayer(symbolLayer);
+          }
+        }
+      } else if (_.eq(layer.type, MapLayerType.LINE) || _.eq(layer.type, MapLayerType.MULTILINESTRING) || _.eq(layer.type, MapLayerType.POLYGON)) {
+        ////////////////////////////////////////////////////////
+        // Line, Polygon layer
+        ////////////////////////////////////////////////////////
+        // Create
+        const symbolLayer = new ol.layer.Vector({
+          source: source,
+          style: this.mapStyleFunction(layerIndex, this.data)
+        });
+        // set z index (the default value is 0 and higher would be 1)
+        // this.symbolLayer.setZIndex(this.getUiMapOption().layerNum == num? 1 : 0);
+        symbolLayer.setZIndex(3);
+        this.layerMap.push({id: layerIndex, layerValue: symbolLayer});
+        // Init
+        if (isMapCreation && this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(symbolLayer);
+        } else {
+          if (this.getUiMapOption().showMapLayer) {
+            // Add layer
+            this.olmap.addLayer(symbolLayer);
+          } else {
+            // Remove layer
+            this.olmap.removeLayer(symbolLayer);
+          }
+        }
+      } else if (_.eq(layer.type, MapLayerType.HEATMAP)) {
+        ////////////////////////////////////////////////////////
+        // Heatmap layer
+        ////////////////////////////////////////////////////////
+        const getHeatMapLayerValue: UIHeatmapLayer = layer as UIHeatmapLayer;
+        // Create
+        const heatmapLayer = new ol.layer.Heatmap({
+          source: _.eq(geomType, LogicalType.GEO_POINT) ? source : emptySource,
+          // Style
+          gradient: HeatmapColorList[getHeatMapLayerValue.color.schema],
+          opacity: 1 - (getHeatMapLayerValue.color.transparency * 0.01),
+          radius: getHeatMapLayerValue.radius,
+          blur: getHeatMapLayerValue.blur * 0.7
+        });
+        // set z index (the default value is 0 and higher would be 1)
+        // this.heatmapLayer.setZIndex(this.getUiMapOption().layerNum == num? 1 : 0);
+        heatmapLayer.setZIndex(0);
+        this.layerMap.push({id: layerIndex, layerValue: heatmapLayer});
+        // Init
+        if (isMapCreation && this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(heatmapLayer);
+        } else {
+          if (this.getUiMapOption().showMapLayer) {
+            // Add layer
+            this.olmap.addLayer(heatmapLayer);
+            // Set style
+            if (isUndefined(HeatmapColorList[getHeatMapLayerValue.color.schema])) {
+              heatmapLayer.setGradient(HeatmapColorList['HC1']);
+            } else {
+              heatmapLayer.setGradient(HeatmapColorList[getHeatMapLayerValue.color.schema]);
+            }
+            heatmapLayer.setOpacity(1 - (getHeatMapLayerValue.color.transparency * 0.01));
+            heatmapLayer.setRadius(getHeatMapLayerValue.radius);
+            heatmapLayer.setBlur(getHeatMapLayerValue.blur * 0.7);
+          } else {
+            // Remove layer
+            this.olmap.removeLayer(heatmapLayer);
+          }
+        }
+      } else if (_.eq(layer.type, MapLayerType.TILE)) {
+        ////////////////////////////////////////////////////////
+        // Hexgon layer
+        ////////////////////////////////////////////////////////
+        // Create
+        const hexagonLayer = new ol.layer.Vector({
+          source: _.eq(geomType, LogicalType.GEO_POINT) ? source : emptySource,
+          style: _.eq(geomType, LogicalType.GEO_POINT) ? this.hexagonStyleFunction(layerIndex, this.data) : new ol.style.Style()
+        });
+        // set z index (the default value is 0 and higher would be 1)
+        // this.hexagonLayer.setZIndex(this.getUiMapOption().layerNum == num? 1 : 0);
+        hexagonLayer.setZIndex(1);
+        this.layerMap.push({id: layerIndex, layerValue: hexagonLayer});
+        // Init
+        if (isMapCreation && this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(hexagonLayer);
+        } else {
+          if (this.getUiMapOption().showMapLayer) {
+            // Add layer
+            this.olmap.addLayer(hexagonLayer);
+          } else {
+            // Remove layer
+            this.olmap.removeLayer(hexagonLayer);
+          }
+        }
+      }
+    }
+    this.safelyDetectChanges();
+
+    // Map data place fit
+    if (
+      !this._isChangedZoom &&
+      (isLogicalType && this.shelf.layers[layerIndex].fields[this.shelf.layers[layerIndex].fields.length - 1].field.logicalType != null) && 'Infinity'.indexOf(source.getExtent()[0]) === -1
+      && (_.isUndefined(this.uiOption['layers'][layerIndex]['changeCoverage']) || this.uiOption['layers'][layerIndex]['changeCoverage'])) {
+      this.olmap.getView().fit(source.getExtent());
+    } else {
+      // set saved data zoom
+      if (this.uiOption.chartZooms && this.uiOption.chartZooms.length > 0) {
+        this.olmap.getView().setCenter([this.uiOption.chartZooms[0].startValue, this.uiOption.chartZooms[0].endValue]);
+        this.olmap.getView().setZoom(this.uiOption.chartZooms[0].count);
+      }
+    }
+
+  }
+
+  /**
+   * Creation feature
+   */
+  private createFeature(source, layerIndex): void {
+
+    const data = this.data[layerIndex];
+
+    ////////////////////////////////////////////////////////
+    // Generate feature
+    ////////////////////////////////////////////////////////
+    // Feature list
+    const features = [];
+    let field = null;
+    _.each(this.shelf.layers[layerIndex].fields, (fieldTemp) => {
+      if (fieldTemp != null && fieldTemp.field.logicalType && fieldTemp.field.logicalType.toString().indexOf('GEO') !== -1) {
+        field = fieldTemp;
+        return false;
+      }
+    });
+    if (field != null && field.field != null && field.field.logicalType != null) {
+      const geomType = field.field.logicalType.toString();
+      ////////////////////////////////////////////////////////
+      // set field list
+      ////////////////////////////////////////////////////////
+      const shelf: GeoField[] = _.cloneDeep(this.shelf.layers[layerIndex].fields);
+      this.checkFieldList(shelf, layerIndex);
+      // Data set
+      for (let i = 0; i < data.features.length; i++) {
+        // geo type
+        if (data.features[i].geometry.type.toString().toLowerCase().indexOf('point') !== -1) {
+          // point && heatmap
+          const pointFeature = (new ol.format.GeoJSON()).readFeature(data.features[i]);
+          if (_.eq(geomType, LogicalType.GEO_POINT)) {
+            let featureCenter = pointFeature.getGeometry().getCoordinates();
+            if (featureCenter.length === 1) {
+              const extent = pointFeature.getGeometry().getExtent();
+              featureCenter = ol.extent.getCenter(extent);
+              pointFeature.setGeometry(new ol.geom.Point(featureCenter));
+            }
+            if (this.uiOption.fieldMeasureList.length > 0) {
+              const alias = ChartUtil.getFieldAlias(this.getUiMapOption().layers[layerIndex].color.column, this.shelf.layers[layerIndex].fields, this.getUiMapOption().layers[layerIndex].color.aggregationType);
+              // 히트맵 weight 설정
+              if (data.valueRange[alias]) {
+                pointFeature.set('weight', pointFeature.getProperties()[alias] / data.valueRange[alias].maxValue);
+              }
+            }
+          }
+          pointFeature.set('layerNum', layerIndex);
+          pointFeature.set('isClustering', this.getUiMapOption().layers[layerIndex]['clustering']);
+          features[i] = pointFeature;
+          source.addFeature(features[i]);
+        } else if (data.features[i].geometry.type.toString().toLowerCase().indexOf('polygon') !== -1) {
+          // polygon
+          const polygonFeature = (new ol.format.GeoJSON()).readFeature(data.features[i]);
+          polygonFeature.set('layerNum', layerIndex);
+          features[i] = polygonFeature;
+          source.addFeature(features[i]);
+        } else if (data != null && data.features[i] != null && data.features[i].geometry != null && data.features[i].geometry.type.toString().toLowerCase().indexOf('line') !== -1) {
+          let line;
+          if (data.features[i].geometry.type.toString().toLowerCase().indexOf('multi') !== -1) {
+            line = new ol.geom.MultiLineString(data.features[i].geometry.coordinates);
+          } else {
+            line = new ol.geom.LineString(data.features[i].geometry.coordinates);
+          }
+          const lineFeature = new ol.Feature({geometry: line});
+          if (!_.isNull(this.getUiMapOption().layers[layerIndex].color.column)) {
+            const alias = ChartUtil.getFieldAlias(this.getUiMapOption().layers[layerIndex].color.column, this.shelf.layers[layerIndex].fields, this.getUiMapOption().layers[layerIndex].color.aggregationType);
+            lineFeature.set(alias, data.features[i].properties[alias]);
+          }
+          lineFeature.set('layerNum', layerIndex);
+          features.push(lineFeature);
+          source.addFeature(lineFeature);
+        }
+      } // end - features for
+    }
+  }
+
+  /**
+   * map style function
+   */
+  private mapStyleFunction = (layerNum, data, selectMode?: ChartSelectMode, dataIndex?: number) => {
+    const scope: any = this;
+    const styleOption: UIMapOption = this.getUiMapOption();
+    const styleLayer: UILayers = styleOption.layers[layerNum];
+    const styleData = !_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true ? data[dataIndex] : data[layerNum];
+    return (feature, _resolution) => {
+      ////////////////////////////////////////////////////////
+      // Style options
+      ////////////////////////////////////////////////////////
+      const layerType = styleLayer.type;
+      let featureColor = styleLayer.color.schema;
+      const featureColorType = styleLayer.color.by;
+      let outlineType = null;
+      let lineDashType = null;
+      let lineMaxVal = 1; // styleLayer.size.max;
+      let outlineColor = null;
+      let featureThicknessType = null;
+      let alias = ChartUtil.getFieldAlias(styleLayer.color.column, scope.shelf.layers[layerNum], styleLayer.color.aggregationType);
+
+      if (!_.isUndefined(styleOption['analysis']) && !_.isUndefined(styleOption['analysis']['use']) && styleOption['analysis']['use']) {
+        if (!isNullOrUndefined(styleLayer.color.aggregationType)) {
+          alias = styleLayer.color.aggregationType + '(' + alias + ')';
+        }
+      }
+
+      // Symbol type
+      if (_.eq(layerType, MapLayerType.SYMBOL) || _.eq(layerType, MapLayerType.CLUSTER)) {
+        const symbolLayer: UISymbolLayer = styleLayer as UISymbolLayer;
+        outlineType = symbolLayer.outline ? symbolLayer.outline.thickness : null;
+        outlineColor = symbolLayer.outline ? symbolLayer.outline.color : null;
+      }
+
+      // Line type
+      if (_.eq(layerType, MapLayerType.LINE) || _.eq(layerType, MapLayerType.MULTILINESTRING)) {
+        const lineLayer: UILineLayer = styleLayer as UILineLayer;
+        lineDashType = lineLayer.lineStyle;
+        featureThicknessType = lineLayer.thickness.by;
+        lineMaxVal = lineLayer.thickness.maxValue;
+      }
+
+      // Polygon type
+      if (_.eq(layerType, MapLayerType.POLYGON) || _.eq(layerType, MapLayerType.MULTIPOLYGON)) {
+        const polygonLayer: UIPolygonLayer = styleLayer as UIPolygonLayer;
+        outlineType = polygonLayer.outline ? polygonLayer.outline.thickness : null;
+        outlineColor = polygonLayer.outline ? polygonLayer.outline.color : null;
+      }
+
+
+      ////////////////////////////////////////////////////////
+      // Color
+      ////////////////////////////////////////////////////////
+
+      if (_.eq(featureColorType, MapBy.MEASURE)) {
+        if (styleLayer.color['ranges']) {
+          for (const range of styleLayer.color['ranges']) {
+            const rangeMax = range.fixMax;
+            let rangeMin = range.fixMin;
+
+            if (rangeMax === null) {
+
+              // if feature value is bigger than max value, set max color
+              if (feature.getProperties()[alias] > rangeMin) {
+                featureColor = range.color;
+              }
+
+            } else {
+              if (rangeMin === null) {
+                const minValue = styleData.valueRange[alias].minValue;
+
+                if (minValue >= 0) {
+                  rangeMin = 0;
+                  // when minValue is negative, set minValue to range min
+                } else {
+                  rangeMin = minValue;
+                }
+              }
+
+              if (feature.getProperties()[alias] >= rangeMin &&
+                feature.getProperties()[alias] <= rangeMax) {
+                featureColor = range.color;
+              }
+            }
+          }
+        } else {
+          const ranges = ColorOptionConverter.setMapMeasureColorRange(styleOption, styleData, scope.getColorList(styleLayer), layerNum, scope.shelf.layers[layerNum]);
+
+          // set decimal value
+          const formatValue = ((value) => {
+            return parseFloat((Number(value) * (Math.pow(10, styleOption.valueFormat.decimal)) / Math.pow(10, styleOption.valueFormat.decimal)).toFixed(styleOption.valueFormat.decimal));
+          });
+
+          for (const range of ranges) {
+            const rangeMax = range.fixMax;
+            let rangeMin = range.fixMin;
+
+            if (rangeMax === null) {
+
+              // if feature value is bigger than max value, set max color
+              if (feature.getProperties()[alias] > rangeMin) {
+                featureColor = range.color;
+              }
+
+            } else {
+              if (rangeMin === null) {
+                const minValue = styleData.valueRange[alias].minValue;
+
+                if (minValue >= 0) {
+                  rangeMin = 0;
+                  // when minValue is negative, set minValue to range min
+                } else {
+                  rangeMin = minValue;
+                }
+              }
+
+              const value = formatValue(feature.getProperties()[alias]);
+
+              if ((rangeMin === 0 && rangeMin === value) || (value >= rangeMin && value <= rangeMax)) {
+                featureColor = range.color;
+              }
+            }
+          }
+        }
+
+
+      } else if (_.eq(featureColorType, MapBy.DIMENSION)) {
+
+        // Get dimension color
+        const ranges = scope.setDimensionColorRange(styleLayer, styleData, scope.getColorList(styleLayer), []);
+        _.each(ranges, (range) => {
+          if (_.eq(feature.getProperties()[alias], range.column)) {
+            featureColor = range.color;
+            return false;
+          }
+        });
+      } else if (_.eq(featureColorType, MapBy.NONE)) {
+        featureColor = styleLayer.color.schema;
+      }
+
+      featureColor = scope.hexToRgbA(featureColor, 1 - (styleLayer.color.transparency * 0.01));
+
+      ////////////////////////////////////////////////////////
+      // Outline
+      ////////////////////////////////////////////////////////
+
+      let outlineWidth = 0.00000001;
+      if (_.eq(outlineType, MapThickness.THIN)) {
+        outlineWidth = 1;
+      } else if (_.eq(outlineType, MapThickness.NORMAL)) {
+        outlineWidth = 2;
+      } else if (_.eq(outlineType, MapThickness.THICK)) {
+        outlineWidth = 3;
+      }
+
+      let lineDash = [1];
+      if (_.eq(lineDashType, MapLineStyle.DOTTED)) {
+        lineDash = [3, 3];
+      } else if (_.eq(lineDashType, MapLineStyle.DASHED)) {
+        lineDash = [4, 8];
+      }
+
+      ////////////////////////////////////////////////////////
+      // Line
+      ////////////////////////////////////////////////////////
+
+      let lineThickness = 2;
+
+      if (_.eq(layerType, MapLayerType.LINE) || _.eq(layerType, MapLayerType.MULTILINESTRING)) {
+        try {
+          const lineLayer: UILineLayer = styleLayer as UILineLayer;
+          const lineAlias = ChartUtil.getFieldAlias(lineLayer.thickness.column, scope.shelf.layers[layerNum], lineLayer.thickness.aggregationType);
+
+          if (!_.eq(lineLayer.thickness.column, 'NONE') && _.eq(featureThicknessType, MapBy.MEASURE)) {
+            lineThickness = parseInt(feature.get(lineAlias), 10) / (styleData.valueRange[lineAlias].maxValue / lineMaxVal);
+            if (lineThickness < 1) {
+              lineThickness = 1;
+            } else if (lineThickness > lineMaxVal) {
+              lineThickness = lineMaxVal;
+            }
+          }
+        } catch (error) {
+        }
+      }
+
+      ////////////////////////////////////////////////////////
+      // Selection filter
+      ////////////////////////////////////////////////////////
+
+      let filterFl: boolean = false;
+
+      // set selection filter
+      filterFl = scope.setFeatureSelectionMode(scope, feature);
+
+      // when select mode or filter param exists, set feature selection style
+      if ((filterFl || selectMode) && ChartSelectMode.ADD !== feature.getProperties()['selection']) {
+
+        outlineWidth = 2;
+
+        // when style is dark
+        if (MapLayerStyle.DARK.toString() === styleOption.style) {
+          featureColor = SelectionColor.FEATURE_DARK.toString();
+          outlineColor = SelectionColor.OUTLINE_DARK.toString();
+
+          // when style is colored, light
+        } else {
+          featureColor = SelectionColor.FEATURE_LIGHT.toString();
+          outlineColor = SelectionColor.OUTLINE_LIGHT.toString();
+        }
+      }
+
+      ////////////////////////////////////////////////////////
+      // Creation style
+      ////////////////////////////////////////////////////////
+
+      let style = new ol.style.Style();
+
+      if (_.eq(layerType, MapLayerType.LINE) || _.eq(layerType, MapLayerType.MULTILINESTRING)) {
+        style = new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: featureColor,
+            width: lineThickness,
+            lineDash: lineDash
+          })
+        });
+      } else if (_.eq(layerType, MapLayerType.POLYGON) || _.eq(layerType, MapLayerType.MULTIPOLYGON)) {
+        style = new ol.style.Style({
+          stroke: new ol.style.Stroke({
+            color: outlineColor,
+            width: outlineWidth
+          }),
+          fill: new ol.style.Fill({
+            color: featureColor
+          })
+        });
+      }
+      return style;
+    }
+  };
+
+  private _addMakerLayer(feature, features, layerNum, clusterSize?: string) {
+
+    if(!this.getUiMapOption().marker || 0 === this.getUiMapOption().marker.columns.length){
+      return;
+    } else {
+      if( features && this.getUiMapOption().marker.limit >= features.length ) {
+        const extent = feature.getGeometry().getExtent();
+
+        const $elm = $( this.markerEl.nativeElement );
+        const newElm = $elm.clone();
+        newElm.css({ display : 'block' });
+
+        // console.log('>>> UiMapOption : ', this.getUiMapOption());
+
+        // 단일 데이터 추가
+        const $coord = newElm.find( '.sys-coord' );
+
+        if( clusterSize ) {
+          $coord.find( '.ddp-title' ).text( 'Count' );
+          $coord.find( '.ddp-det' ).text( clusterSize );
+        } else {
+          const markerField = this.getUiMapOption().marker.columns[0]; // field name
+          let tooltipVal =  feature.get(markerField);
+          if (typeof (tooltipVal) === 'number') {
+            tooltipVal = FormatOptionConverter.getFormatValue(tooltipVal, this.getUiMapOption().valueFormat);
+          }
+          $coord.find( '.ddp-title' ).text( markerField );
+          $coord.find( '.ddp-det' ).text( tooltipVal );
+        }
+
+        $elm.after( newElm );
+        const markerLayer = new ol.Overlay({
+          element: newElm.get(0),
+          positioning: 'top-center',
+          stopEvent: false,
+          id: 'marker_' + layerNum + '_' + StringUtil.random(5),
+          position: ol.extent.getCenter(extent)
+        });
+        this.olmap.addOverlay(markerLayer);
+        this._markerLayers.push( { layer : markerLayer, element : newElm } );
+      }
+    }
+  }
+
+  /**
+   * point style function
+   */
+  private pointStyleFunction = (layerNum, data, selectMode?: ChartSelectMode, dataIndex?: number) => {
+    const scope: any = this;
+    const styleOption: UIMapOption = this.getUiMapOption();
+    const styleLayer: UILayers = styleOption.layers[layerNum];
+    const styleData = !_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true ? data[dataIndex] : data[layerNum];
+
+    if( this._markerLayers && this._markerLayers.length ) {
+      for( let idx = 0, nMax = this._markerLayers.length; idx < nMax; idx++ ) {
+        const markerInfo = this._markerLayers[idx];
+        this.olmap.removeLayer(markerInfo.layer);
+        markerInfo.element.remove();
+      }
+    }
+
+    return (feature, _resolution) => {
+      ////////////////////////////////////////////////////////
+      // Style options
+      ////////////////////////////////////////////////////////
+      const symbolLayer: UISymbolLayer = styleLayer as UISymbolLayer;
+      let featureColor = styleLayer.color.schema;
+      const featureColorType = styleLayer.color.by;
+      const symbolType = symbolLayer.symbol;
+      const outlineType = symbolLayer.outline ? symbolLayer.outline.thickness : null;
+      let outlineColor = symbolLayer.outline ? symbolLayer.outline.color : null;
+      const lineMaxVal = 1; // styleLayer.size.max;
+      const featureSizeType = symbolLayer.size.by;
+      let style = null;
+      let alias = ChartUtil.getFieldAlias(styleLayer.color.column, scope.shelf.layers[layerNum].fields, styleLayer.color.aggregationType);
+      if (styleLayer.type === MapLayerType.CLUSTER) {
+        alias = 'count';
+      }
+      ////////////////////////////////////////////////////////
+      // Cluster size
+      ////////////////////////////////////////////////////////
+      let size: number = 0;
+      let isClustering: boolean = false;
+
+      if (!_.isUndefined(feature.getProperties())
+        && !_.isUndefined(feature.getProperties()['isClustering'])
+        && !_.isUndefined(feature.getProperties().count)
+        && feature.getProperties()['isClustering'] === true
+        && CommonConstant.MAP_CLUSTER_ZOOM_SIZE >= this.olmap.getView().getZoom() ) {
+        isClustering = true;
+        size = feature.getProperties().count;
+      }
+
+      if (isClustering === false || size <= 1) {
+
+        this._addMakerLayer(feature, styleData.features, layerNum);
+
+        ////////////////////////////////////////////////////////
+        // Color
+        ////////////////////////////////////////////////////////
+        if (_.eq(featureColorType, MapBy.MEASURE)) {
+          if (styleLayer.color['ranges']) {
+            for (const range of styleLayer.color['ranges']) {
+              const rangeMax = range.fixMax;
+              let rangeMin = range.fixMin;
+
+              if (rangeMax === null) {
+                // if feature value is bigger than max value, set max color
+                if (feature.getProperties()[alias] > rangeMin) {
+                  featureColor = range.color;
+                }
+              } else {
+                if (rangeMin === null) {
+                  // let minValue = styleData.valueRange[alias].minValue;
+                  let minValue = 0;
+                  if (styleData.valueRange[alias]) {
+                    minValue = styleData.valueRange[alias].minValue;
+                  }
+                  if (minValue >= 0) {
+                    rangeMin = 0;
+                    // when minValue is negative, set minValue to range min
+                  } else {
+                    rangeMin = minValue;
+                  }
+                }
+                if (feature.getProperties()[alias] >= rangeMin &&
+                  feature.getProperties()[alias] <= rangeMax) {
+                  featureColor = range.color;
+                }
+              }
+            }
+          } else {
+            const ranges = ColorOptionConverter.setMapMeasureColorRange(styleOption, styleData, scope.getColorList(styleLayer), layerNum, scope.shelf.layers[layerNum].fields);
+            // set decimal value
+            const formatValue = ((value) => {
+              return parseFloat((Number(value) * (Math.pow(10, styleOption.valueFormat.decimal)) / Math.pow(10, styleOption.valueFormat.decimal)).toFixed(styleOption.valueFormat.decimal));
+            });
+            for (const range of ranges) {
+              const rangeMax = range.fixMax;
+              let rangeMin = range.fixMin;
+              if (rangeMax === null) {
+                // if feature value is bigger than max value, set max color
+                if (feature.getProperties()[alias] > rangeMin) {
+                  featureColor = range.color;
+                }
+              } else {
+                if (rangeMin === null) {
+                  const minValue = styleData.valueRange[alias].minValue;
+
+                  if (minValue >= 0) {
+                    rangeMin = 0;
+                    // when minValue is negative, set minValue to range min
+                  } else {
+                    rangeMin = minValue;
+                  }
+                }
+
+                const value = formatValue(feature.getProperties()[alias]);
+
+                if ((rangeMin === 0 && rangeMin === value) || (value >= rangeMin && value <= rangeMax)) {
+                  featureColor = range.color;
+                }
+              }
+            }
+          }
+        } else if (_.eq(featureColorType, MapBy.DIMENSION)) {
+          // Get dimension color
+          const ranges = scope.setDimensionColorRange(styleLayer, styleData, scope.getColorList(styleLayer), []);
+          _.each(ranges, (range) => {
+            if (_.eq(feature.getProperties()[alias], range.column)) {
+              featureColor = range.color;
+              return false;
+            }
+          });
+        } else if (_.eq(featureColorType, MapBy.NONE)) {
+          featureColor = styleLayer.color.schema;
+        }
+        featureColor = scope.hexToRgbA(featureColor, 1 - (styleLayer.color.transparency * 0.01));
+        ////////////////////////////////////////////////////////
+        // Outline
+        ////////////////////////////////////////////////////////
+        let outlineWidth = 0.00000001;
+        if (_.eq(outlineType, MapThickness.THIN)) {
+          outlineWidth = 1;
+        } else if (_.eq(outlineType, MapThickness.NORMAL)) {
+          outlineWidth = 2;
+        } else if (_.eq(outlineType, MapThickness.THICK)) {
+          outlineWidth = 3;
+        }
+        ////////////////////////////////////////////////////////
+        // Size
+        ////////////////////////////////////////////////////////
+        let featureSize = 5;
+        try {
+          if (_.eq(featureSizeType, MapBy.MEASURE)) {
+            featureSize = parseInt(feature.get(ChartUtil.getFieldAlias(styleLayer.size.column, scope.shelf.layers[layerNum].fields)), 10) / (styleData.valueRange[ChartUtil.getFieldAlias((styleLayer as UISymbolLayer).size.column, scope.shelf.layers[layerNum].fields)].maxValue / 30);
+            if (featureSize < 5) {
+              featureSize = 5;
+            }
+          }
+        } catch (error) {
+        }
+        let lineThickness = 2;
+        try {
+          if (_.eq(featureSizeType, MapBy.MEASURE)) {
+            lineThickness = parseInt(feature.get(ChartUtil.getFieldAlias(styleLayer.size.column, scope.shelf.layers[layerNum].fields)), 10) / (styleData.valueRange[ChartUtil.getFieldAlias((styleLayer as UISymbolLayer).size.column, scope.shelf.layers[layerNum].fields)].maxValue / lineMaxVal);
+            if (lineThickness < 1) {
+              lineThickness = 1;
+            }
+          }
+        } catch (error) {
+        }
+        ////////////////////////////////////////////////////////
+        // Selection filter
+        ////////////////////////////////////////////////////////
+
+        let filterFl: boolean = false;
+
+        // set selection filter
+        filterFl = scope.setFeatureSelectionMode(scope, feature);
+
+        // when select mode or filter param exists, set feature selection style
+        if ((filterFl || selectMode) && ChartSelectMode.ADD !== feature.getProperties()['selection']) {
+
+          outlineWidth = 2;
+
+          if (MapLayerStyle.DARK.toString() === styleOption.style) {
+            // when style is dark
+            featureColor = SelectionColor.FEATURE_DARK.toString();
+            outlineColor = SelectionColor.OUTLINE_DARK.toString();
+          } else {
+            // when style is colored, light
+            featureColor = SelectionColor.FEATURE_LIGHT.toString();
+            outlineColor = SelectionColor.OUTLINE_LIGHT.toString();
+          }
+        }
+        ////////////////////////////////////////////////////////
+        // Creation style
+        ////////////////////////////////////////////////////////
+        style = new ol.style.Style({
+          image: new ol.style.Circle({
+            radius: 4,
+            fill: new ol.style.Fill({
+              color: featureColor
+            })
+          }),
+          stroke: new ol.style.Stroke({
+            color: featureColor,
+            width: lineThickness
+          }),
+          fill: new ol.style.Fill({
+            color: featureColor
+          })
+        });
+
+        // 크기 반경
+        if (symbolType === MapSymbolType.CIRCLE || symbolType === MapSymbolType.SQUARE || symbolType === MapSymbolType.TRIANGLE) {
+          if (isNullOrUndefined(styleLayer.pointRadius) || isNaN(styleLayer.pointRadius)
+            || isNullOrUndefined(styleLayer['pointRadiusFrom'])) {
+            styleLayer.pointRadius = featureSize;
+            styleLayer['pointRadiusFrom'] = featureSize;
+          } else {
+            if (!isNullOrUndefined(styleLayer['needToCalPointRadius']) && styleLayer['needToCalPointRadius']
+              && !isNullOrUndefined(styleLayer['pointRadiusTo'])) {
+              // 처음에는 정의된 값이 없음, color 에서 첫번째 measure min/max 가져옴
+              let maxValue: number = !isNullOrUndefined(styleLayer['size']['maxValue']) ? parseFloat(_.cloneDeep(styleLayer['size']['maxValue'])) : _.cloneDeep(styleLayer.color.maxValue);
+              const minValue: number = !isNullOrUndefined(styleLayer['size']['minValue']) ? parseFloat(_.cloneDeep(styleLayer['size']['minValue'])) : _.cloneDeep(styleLayer.color.minValue);
+              // 마이너스 값은 지도에 표시 할 수 없기 때문에 플러스로 치환
+              if (minValue < 0) {
+                maxValue = maxValue + (-minValue);
+              }
+              if (maxValue > 0 && maxValue < 1) {
+                // 소수점 자리 찾기
+                const countDecimals: number = maxValue.toString().split('.')[1].length;
+                const decimalNum = Math.pow(10, countDecimals);
+                maxValue = maxValue * decimalNum;
+              } else if (maxValue === 0) {
+                maxValue = 1;
+              } else if (maxValue < 0) {
+                maxValue = -maxValue;
+              }
+              let calFeatureSize = featureSize;
+              if (!isNullOrUndefined(feature.getProperties()[styleLayer['size'].column])) {
+                // 최대 pixel 값은 200으로 기획에서 정의됨
+                calFeatureSize = feature.getProperties()[styleLayer['size'].column] * (200 / maxValue);
+              }
+              if (calFeatureSize < styleLayer['pointRadiusFrom']) {
+                // featureSize 계산 값이 크기 반경 보다 작을 경우, 크기 반경 최소 값 유지
+                calFeatureSize = styleLayer['pointRadiusFrom'];
+              } else if (calFeatureSize > styleLayer['pointRadiusTo']) {
+                // featureSize 계산 값이 크기 반경 보다 큰 경우, 크기 반경 최대 값 유지
+                calFeatureSize = styleLayer['pointRadiusTo'];
+              }
+              styleLayer.pointRadius = calFeatureSize;
+            }
+          }
+        }
+        switch (symbolType) {
+          case MapSymbolType.CIRCLE :
+            style = new ol.style.Style({
+              image: new ol.style.Circle({
+                radius: styleLayer.pointRadius,
+                fill: new ol.style.Fill({
+                  color: featureColor
+                }),
+                stroke: new ol.style.Stroke({color: outlineColor, width: outlineWidth})
+              }),
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+          case MapSymbolType.SQUARE :
+            style = new ol.style.Style({
+              image: new ol.style.RegularShape({
+                fill: new ol.style.Fill({color: featureColor}),
+                points: 4,
+                radius: styleLayer.pointRadius,
+                angle: Math.PI / 4,
+                stroke: new ol.style.Stroke({color: outlineColor, width: outlineWidth})
+              }),
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+          case MapSymbolType.TRIANGLE :
+            style = new ol.style.Style({
+              image: new ol.style.RegularShape({
+                fill: new ol.style.Fill({color: featureColor}),
+                points: 3,
+                radius: styleLayer.pointRadius,
+                rotation: Math.PI / 4,
+                angle: -28,
+                stroke: new ol.style.Stroke({color: outlineColor, width: outlineWidth})
+              }),
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+          case MapSymbolType.PIN :
+            style = new ol.style.Style({
+              image: new ol.style.Icon(/** @type {module:ol/style/Icon~Options} */ ({
+                color: featureColor,
+                crossOrigin: 'anonymous',
+                scale: featureSize * 0.1,
+                src: '../../../../../../assets/images/ic_pin.png'
+              })),
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+          case MapSymbolType.PLAIN :
+            style = new ol.style.Style({
+              image: new ol.style.Icon(/** @type {module:ol/style/Icon~Options} */ ({
+                color: featureColor,
+                crossOrigin: 'anonymous',
+                scale: featureSize * 0.1,
+                src: '../../../../../../assets/images/ic_map_airport.png'
+              })),
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+          case MapSymbolType.USER :
+            style = new ol.style.Style({
+              image: new ol.style.Icon(/** @type {module:ol/style/Icon~Options} */ ({
+                color: featureColor,
+                crossOrigin: 'anonymous',
+                scale: featureSize * 0.1,
+                src: '../../../../../../assets/images/ic_map_human.png'
+              })),
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+          default :
+            style = new ol.style.Style({
+              stroke: new ol.style.Stroke({
+                color: outlineColor,
+                width: outlineWidth
+              }),
+              fill: new ol.style.Fill({
+                color: featureColor
+              })
+            });
+            break;
+        }
+      } else {
+        // Cluster Style
+        // featureColor = '#7E94DE';
+
+        this._addMakerLayer(feature, styleData.features, layerNum, size.toString());
+
+        const canvas = scope.featureEl.nativeElement;
+        style = new ol.style.Style({
+          image: new ol.style.Icon({
+            img: canvas,
+            imgSize: [canvas.width, canvas.height],
+            opacity: 0.85
+          }),
+          text: new ol.style.Text({ // 클러스터링 되는 갯수 라벨링
+            text: size.toString(), // 클러스터링 갯수
+            fill: new ol.style.Fill({
+              color: '#fff'
+            }),
+            font: '10px sans-serif'
+          }),
+        });
+      }
+      return style;
+    }
+  };
+
+  /**
+   * Hexagon style function
+   */
+  private hexagonStyleFunction = (layerNum, data, selectMode?: ChartSelectMode, dataIndex?: number) => {
+
+    const scope: any = this;
+    const styleOption: UIMapOption = this.getUiMapOption();
+    const styleLayer: UILayers = styleOption.layers[layerNum];
+    const alias = ChartUtil.getFieldAlias(styleLayer.color.column, scope.shelf.layers[layerNum].fields, styleLayer.color.aggregationType);
+    const styleData = !_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true ? data[dataIndex] : data[layerNum];
+
+    return (feature, _resolution) => {
+
+      ////////////////////////////////////////////////////////
+      // Style options
+      ////////////////////////////////////////////////////////
+
+      // const layerType = styleLayer.type;
+      let featureColor = styleLayer.color.schema;
+      const featureColorType = styleLayer.color.by;
+      // const symbolType = null;
+      // const outlineType = null;
+      // const lineDashType = null;
+      // const lineMaxVal = 1; // styleLayer.size.max;
+      // let outlineColor = 'black';
+      // const featureSizeType = null;
+      // let outlineWidth = 1;
+
+      ////////////////////////////////////////////////////////
+      // Color
+      ////////////////////////////////////////////////////////
+
+      if (_.eq(featureColorType, MapBy.MEASURE)) {
+        if (styleLayer.color['ranges']) {
+          for (const range of styleLayer.color['ranges']) {
+            const rangeMax = range.fixMax;
+            let rangeMin = range.fixMin;
+
+            if (rangeMax === null) {
+
+              // if feature value is bigger than max value, set max color
+              if (feature.getProperties()[alias] > rangeMin) {
+                featureColor = range.color;
+              }
+
+            } else {
+              if (rangeMin === null) {
+                const minValue = styleData.valueRange[alias].minValue;
+
+                if (minValue >= 0) {
+                  rangeMin = 0;
+                  // when minValue is negative, set minValue to range min
+                } else {
+                  rangeMin = minValue;
+                }
+              }
+
+              if (feature.getProperties()[alias] >= rangeMin &&
+                feature.getProperties()[alias] <= rangeMax) {
+                featureColor = range.color;
+              }
+            }
+          }
+        } else {
+          const ranges = ColorOptionConverter.setMapMeasureColorRange(styleOption, styleData, scope.getColorList(styleLayer), layerNum, scope.shelf.layers[layerNum].fields);
+          // set decimal value
+          const formatValue = ((value) => {
+            return parseFloat((Number(value) * (Math.pow(10, styleOption.valueFormat.decimal)) / Math.pow(10, styleOption.valueFormat.decimal)).toFixed(styleOption.valueFormat.decimal));
+          });
+
+          for (const range of ranges) {
+            const rangeMax = range.fixMax;
+            let rangeMin = range.fixMin;
+
+            if (rangeMax === null) {
+
+              // if feature value is bigger than max value, set max color
+              if (feature.getProperties()[alias] > rangeMin) {
+                featureColor = range.color;
+              }
+
+            } else {
+              if (rangeMin === null) {
+                const minValue = styleData.valueRange[alias].minValue;
+
+                if (minValue >= 0) {
+                  rangeMin = 0;
+                  // when minValue is negative, set minValue to range min
+                } else {
+                  rangeMin = minValue;
+                }
+              }
+
+              const value = formatValue(feature.getProperties()[alias]);
+
+              if ((rangeMin === 0 && rangeMin === value) || (value >= rangeMin && value <= rangeMax)) {
+                featureColor = range.color;
+              }
+            }
+          }
+        }
+      } else if (_.eq(featureColorType, MapBy.DIMENSION)) {
+
+        // Get dimension color
+        const ranges = scope.setDimensionColorRange(styleLayer, styleData, scope.getColorList(styleLayer), []);
+        _.each(ranges, (range) => {
+          if (_.eq(feature.getProperties()[alias], range.column)) {
+            featureColor = range.color;
+            return false;
+          }
+        });
+      } else if (_.eq(featureColorType, MapBy.NONE)) {
+        featureColor = styleLayer.color.schema;
+      }
+
+      featureColor = scope.hexToRgbA(featureColor, 1 - (styleLayer.color.transparency * 0.01));
+
+      ////////////////////////////////////////////////////////
+      // Selection filter
+      ////////////////////////////////////////////////////////
+
+      let filterFl: boolean = false;
+
+      // set selection filter
+      filterFl = scope.setFeatureSelectionMode(scope, feature);
+
+      // when select mode or filter param exists, set feature selection style
+      if ((filterFl || selectMode) && ChartSelectMode.ADD !== feature.getProperties()['selection']) {
+
+        // outlineWidth = 2;
+
+        // when style is dark
+        if (MapLayerStyle.DARK.toString() === styleOption.style) {
+          featureColor = SelectionColor.FEATURE_DARK.toString();
+          // outlineColor = SelectionColor.OUTLINE_DARK.toString();
+
+          // when style is colored, light
+        } else {
+          featureColor = SelectionColor.FEATURE_LIGHT.toString();
+          // outlineColor = SelectionColor.OUTLINE_LIGHT.toString();
+        }
+      }
+
+      ////////////////////////////////////////////////////////
+      // Creation style
+      ////////////////////////////////////////////////////////
+
+      return new ol.style.Style({
+        stroke: new ol.style.Stroke({
+          color: featureColor,
+          width: 1
+        }),
+        fill: new ol.style.Fill({
+          color: featureColor
+        })
+      });
+    }
+  }
+
+  /**
+   * return lincense
+   */
+  private attribution(): any {
+
+    if (this.getUiMapOption()) {
+      return this.getUiMapOption().licenseNotation;
+    } else {
+      return '© OpenStreetMap contributors';
+    }
+  }
+
+  /**
+   * Create event
+   */
+  private createMapOverLayEvent(): void {
+    // tooltip 지우기
+    this.olmap.getOverlays().forEach((overlay) => {
+      this.olmap.removeOverlay(overlay);
+    });
+
+    ////////////////////////////////////////////////////////
+    // Create tooltip layer
+    ////////////////////////////////////////////////////////
+    this.tooltipLayer = [];
+    for (let layerIndex = 0; this.getUiMapOption().layers.length > layerIndex; layerIndex++) {
+      // do not create tooltip for HEATMAP
+      if (MapLayerType.HEATMAP !== this.getUiMapOption().layers[layerIndex].type) {
+        // Create
+        this.tooltipLayer = new ol.Overlay({
+          element: this.tooltipEl.nativeElement,
+          positioning: 'top-center',
+          stopEvent: false,
+          id: 'layerId' + (layerIndex + 1)
+        });
+        this.olmap.addOverlay(this.tooltipLayer);
+      }
+    }
+    ////////////////////////////////////////////////////////
+    // Add event
+    ////////////////////////////////////////////////////////
+    if (!_.isNull(this.olmap.frameState_)) {
+      this.preZoomSize = Math.round(this.olmap.frameState_.viewState.zoom);
+    }
+    this.olmap.un('pointermove', this.tooltipFunction);
+    this.olmap.on('pointermove', this.tooltipFunction);
+    // this.olmap.on('click', this.zoomFunction);
+    // this.olmap.on('pointermove', function(event) {
+    //
+    //   if (event.dragging) {
+    //     return;
+    //   }
+    //
+    //   // let pixel = this.olmap.getEventPixel(event.originalEvent);
+    //
+    // });
+  }
+
+  /**
+   * Tooltip mouse move event callback
+   * @param event
+   */
+  private tooltipFunction = (event) => {
+    // tooltip 타입 설정
+    let tooltipTypeToShow = null;
+    // Get feature
+    let feature = this.olmap.forEachFeatureAtPixel(event.pixel, (_feature) => {
+      return _feature;
+    });
+    // let featureByEvent = event.map.forEachFeatureAtPixel(event.pixel, (feature) => {
+    //   return feature;
+    // });
+    // console.log(featureByEvent);
+    // console.log(this.olmap.getFeaturesAtPixel(event.pixel));
+    // console.log(this.olmap.hasFeatureAtPixel(event.pixel));
+
+    // feature check (if no features hide tooltip)
+    if (!feature
+      ||
+      (!_.isUndefined(feature.getProperties())
+        // clustering의 경우 tooltip 안보이게 함
+        && !_.isUndefined(feature.getProperties()['isClustering'])
+        && feature.getProperties()['isClustering'] === true
+        && !_.isUndefined(feature.getProperties()['count'])
+        && feature.getProperties()['count'] > 1
+        && CommonConstant.MAP_CLUSTER_ZOOM_SIZE >= this.olmap.getView().getZoom())
+      ||
+      (!_.isUndefined(feature.getProperties()['layerNum'])
+        // 비교레이어 영역 layer에 마우스 오버시 tooltip 안보이게 함
+        && feature.getProperties()['layerNum'] === -5)) {
+      // Disable tooltip
+      this.tooltipInfo.enable = false;
+      this.safelyDetectChanges();
+      if (!_.isUndefined(this.tooltipLayer) && this.tooltipLayer.length > 0) {
+        this.tooltipLayer.setPosition(undefined);
+      }
+      // remove z-index for tooltip
+      if (!this.isPage) $(document).find('.ddp-ui-dash-contents').removeClass('ddp-tooltip');
+      else $(document).find('.ddp-view-chart-contents').removeClass('ddp-tooltip');
+      return;
+    }
+
+    // get tooltip number from feature
+    const toolTipLayerNum = _.cloneDeep(!isNullOrUndefined(feature.getProperties().layerNum) ? feature.getProperties().layerNum : !isNullOrUndefined(feature.getProperties().features[0].get('layerNum')) ? feature.getProperties().features[0].get('layerNum') : 0);
+
+    // do not set tooltip for HEATMAP
+    if (!_.isUndefined(this.getUiMapOption().layers[toolTipLayerNum]) && !_.isUndefined(this.getUiMapOption().layers[toolTipLayerNum].type)
+      && this.getUiMapOption().layers[toolTipLayerNum].type !== MapLayerType.HEATMAP) {
+
+      // set z-index for tooltip
+      if (!this.isPage) $(document).find('.ddp-ui-dash-contents').addClass('ddp-tooltip');
+      else $(document).find('.ddp-view-chart-contents').addClass('ddp-tooltip');
+
+      ////////////////////////////////////////////////////////
+      // Layer num & name
+      ////////////////////////////////////////////////////////
+      // Cluster check
+      const features = feature.get('features');
+      if (!isNullOrUndefined(features)) {
+        if (features.length > 1) {
+          return;
+        }
+        feature = features[0];
+      }
+      if (tooltipTypeToShow == null
+        || this.getUiMapOption().layers[toolTipLayerNum].type === MapLayerType.SYMBOL
+        || this.getUiMapOption().layers[toolTipLayerNum].type === MapLayerType.CLUSTER) {
+        // Layer num & name
+        if (this.getUiMapOption().toolTip.displayTypes !== undefined && this.getUiMapOption().toolTip.displayTypes[17] !== null) {
+          tooltipTypeToShow = this.getUiMapOption().layers[toolTipLayerNum].type;
+          this.tooltipInfo.num = toolTipLayerNum + 1;
+          this.tooltipInfo.name = this.getUiMapOption().layers[toolTipLayerNum].name;
+
+        } else {
+          this.tooltipInfo.name = null;
+        }
+
+        ////////////////////////////////////////////////////////
+        // Geometry Type
+        ////////////////////////////////////////////////////////
+        this.tooltipInfo.geometryType = feature.getGeometry().getType();
+
+        ////////////////////////////////////////////////////////
+        // Coordinates (Geo Info)
+        ////////////////////////////////////////////////////////
+        let coords = [0, 0];
+        const extent = feature.getGeometry().getExtent();
+        coords = ol.extent.getCenter(extent);
+
+        this.tooltipInfo.coords = [];
+
+        if (this.getUiMapOption().toolTip.displayTypes !== undefined && this.getUiMapOption().toolTip.displayTypes[18] !== null) {
+
+          // Line Type
+          if (_.eq(this.tooltipInfo.geometryType, String(MapGeometryType.LINE))) {
+            this.tooltipInfo.coords[0] = coords[0];
+            this.tooltipInfo.coords[coords.length - 1] = coords[coords.length - 1];
+          } else {
+            // Other
+            this.tooltipInfo.coords[0] = coords[0].toFixed(4) + ', ' + coords[1].toFixed(4);
+          }
+        }
+
+        ////////////////////////////////////////////////////////
+        // tooltip Field info (Data Value)
+        ////////////////////////////////////////////////////////
+
+        this.tooltipInfo.fields = [];
+        // let layerFieldList = [];
+
+        // Properties (DATA_VALUE)
+        if (this.getUiMapOption().toolTip.displayTypes !== undefined && this.getUiMapOption().toolTip.displayTypes[19] !== null) {
+          const aggregationKeys: any[] = [];
+          // layer 에 올라간 field 값 조회
+          let layerItems = [];
+          // let itemIndex = 0;
+          // let customField = {};
+          if (!_.isUndefined(this.getUiMapOption().analysis) && !_.isUndefined(this.getUiMapOption().analysis['use']) && this.getUiMapOption().analysis['use'] === true) {
+            // 공간연산 실행 시
+            layerItems = _.cloneDeep(!_.isUndefined(this.shelf.layers[this.getUiMapOption().layerNum])
+            && !_.isUndefined(this.shelf.layers[this.getUiMapOption().layerNum].fields)
+            && this.shelf.layers[this.getUiMapOption().layerNum].fields.length > 0
+              ? this.shelf.layers[this.getUiMapOption().layerNum].fields : []);
+          } else {
+            this.shelf.layers[toolTipLayerNum].fields.forEach((field) => {
+              layerItems.push(field);
+            });
+          }
+
+          // layer 에 올란간 dimension 와 measure list 조회
+          // layerFieldList = TooltipOptionConverter.returnTooltipDataValue(layerItems);
+
+          for (const key in feature.getProperties()) {
+            if (key) {
+              _.each(this.getUiMapOption().toolTip.displayColumns, (field, idx) => {
+                if (_.eq(field, key)) {
+                  if (this.getUiMapOption().layers[this.getUiMapOption().layerNum].type === MapLayerType.CLUSTER) {
+                    return false;
+                  }
+                  aggregationKeys.push({idx: idx, key: key});
+                  return false;
+                }
+              });
+            }
+          }
+
+          // 공간연산 실행 후 단계구분도(choropleth) 설정을 count로 custom하기 때문에 해당 부분 tooltip에 보여주기 위해 적용
+          // if (aggregationKeys.length == 0 && !_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true) {
+          //   aggregationKeys.push({idx: 0, key: 'count'});
+          // }
+          // 공간연산시 단계구분도를 default 값(count)으로 하지 않을 경우 아래와 같이 count를 제외 시킴
+          if (aggregationKeys.length >= 2 && !_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true
+            || (!_.isUndefined(this.getUiMapOption().analysis)
+              && !_.isUndefined(this.getUiMapOption().analysis.operation)
+              && !_.isUndefined(this.getUiMapOption().analysis.operation.aggregation)
+              && !_.isUndefined(this.getUiMapOption().analysis.operation.aggregation.type))) {
+            let aggregationKeyNum: number = 0;
+            let isAggregationKeyNeedToRemove: boolean = false;
+            for (let aggregationKeyIndex = 0; aggregationKeys.length > aggregationKeyIndex; aggregationKeyIndex++) {
+              if (aggregationKeys[aggregationKeyIndex].key === 'count') {
+                aggregationKeyNum = aggregationKeyIndex;
+                isAggregationKeyNeedToRemove = true;
+                break;
+              }
+            }
+            if (isAggregationKeyNeedToRemove) {
+              aggregationKeys.splice(aggregationKeyNum, 1);
+            }
+          }
+
+          _.each(_.orderBy(aggregationKeys, ['idx']), (aggregationKey) => {
+            let tooltipVal = feature.get(aggregationKey.key);
+            if (aggregationKey.key !== 'geometry' && aggregationKey.key !== 'weight' && aggregationKey.key !== 'layerNum') {
+              const field = {
+                name: '',
+                value: ''
+              };
+              if (aggregationKey.key === 'features') {
+                field.name = aggregationKey.key;
+                field.value = feature.get(aggregationKey.key).length;
+              } else {
+                if (typeof (tooltipVal) === 'number') {
+                  tooltipVal = FormatOptionConverter.getFormatValue(tooltipVal, this.getUiMapOption().valueFormat);
+                }
+                field.name = aggregationKey.key;
+                field.value = tooltipVal;
+              }
+              this.tooltipInfo.fields.push(field);
+            }
+          });
+        }
+
+        ////////////////////////////////////////////////////////
+        // tooltip enable/disable
+        ////////////////////////////////////////////////////////
+
+        // if required values are empty, enable false
+        this.tooltipInfo.enable = !(null === this.tooltipInfo.name && 0 === this.tooltipInfo.coords.length && 0 === this.tooltipInfo.fields.length);
+
+        // Element apply
+        this.safelyDetectChanges();
+        // // Element apply
+        // this.changeDetect.detectChanges();
+
+        ////////////////////////////////////////////////////////
+        // set tooltip position
+        ////////////////////////////////////////////////////////
+        if (this.uiOption.toolTip) {
+
+          const mapSize = event.map.getSize();
+          const tooltipPos = event.pixel;
+
+          // tooltip 에 보여질 정보 길이 설정 (해당 수에 따라 tooltip의 height가 변동 됨)
+          let xOffset = 0;
+          let yOffset = 0;
+
+          console.log( '>>> ', tooltipPos, mapSize );
+
+          // 툴팁 X 좌표가 지도 사이즈의 절반 이하로 내려가면 offset 계산 진행
+          if( tooltipPos[0] > mapSize[0]/2 ) {
+
+            console.log( '>>>>>> x offset' );
+
+            xOffset = xOffset - 150;  // 툴팁의 가로 최대 사이즈가 150 으로 되어 있어 150 을 고정값으로 함
+          }
+
+          // 툴팁 Y 좌표가 지도 사이즈의 절반 이하로 내려가면 offset 계산 진행
+          if( tooltipPos[1] > mapSize[1]/2 ) {
+
+            yOffset = -70;
+
+            console.log( '>>>>>> y offset' );
+
+            // tooltip info 에 보여줄 양에 따라 width / height 구하기
+            const sizeOfToolTipHeight = [];
+            if (!_.isUndefined(this.tooltipInfo.fields) && this.tooltipInfo.fields.length > 0) {
+              // column 이름은 있는데, column value가 없을 경우 사이즈 다를 수 있음
+              this.tooltipInfo.fields.forEach((field) => {
+                if (field['name'] != null && !_.isUndefined(field['name'])) {
+                  sizeOfToolTipHeight.push(field['name']);
+                }
+                if (field['value'] != null && !_.isUndefined(field['value'])) {
+                  sizeOfToolTipHeight.push(field['value']);
+                }
+              });
+            }
+
+            if (sizeOfToolTipHeight.length > 0) {
+              // height 계산
+              yOffset = yOffset - (25 * (sizeOfToolTipHeight.length / 1.2));
+            }
+          }
+          this.tooltipLayer.setOffset([xOffset, yOffset]);
+        }
+        const toShowCoords = event.coordinate;
+        if (_.eq(this.tooltipInfo.geometryType, String(MapGeometryType.LINE))) {
+          // line 일 경우 tooltip coordinator 위치를 살짝 위로 설정
+          toShowCoords[toShowCoords.length - 1] = toShowCoords[toShowCoords.length - 1] + 0.0018;
+          this.tooltipLayer.setPosition(toShowCoords);
+        } else {
+          this.tooltipLayer.setPosition(toShowCoords);
+        }
+      }
+    }
+  };
+
+  // private markerFunction = (event) => {
+  //
+  // }
+
+  // /**
+  //  * create drag interaction (for selection filter)
+  //  */
+  // private createInteraction(): void {
+  //
+  //   // drag style
+  //   const dragBoxInteraction = new ol.interaction.DragBox({
+  //     condition: ol.events.condition.shiftKeyOnly,
+  //     style: new ol.style.Style({
+  //       stroke: new ol.style.Stroke({
+  //         color: 'yellow',
+  //         width: 2
+  //       })
+  //     })
+  //   });
+  //
+  //   // TODO need to move on addChartMultiSelectEventListener
+  //   dragBoxInteraction.on('boxend', (event) => {
+  //
+  //     // const format = new ol.format.GeoJSON();
+  //     new ol.format.GeoJSON();
+  //     const geom = event.target.getGeometry();
+  //
+  //     // event.target.getMap().getView()
+  //
+  //     // const feature = new ol.Feature({
+  //     //   geometry: geom
+  //     // });
+  //     new ol.Feature({ geometry: geom });
+  //
+  //   });
+  //
+  //   this.olmap.getInteractions().extend([dragBoxInteraction]);
+  // }
+
+  /**
+   * Create legend
+   */
+  private createLegend(layerIndex: number, isAnalysis: boolean): void {
+
+    ////////////////////////////////////////////////////////
+    // Enable check
+    ////////////////////////////////////////////////////////
+    if (!this.getUiMapOption().legend.auto) {
+      this.legendInfo.enable = false;
+      return;
+    }
+
+    if (!this.uiOption.legend.showName) {
+      this.legendInfo.enable = false;
+      return;
+    }
+
+    ////////////////////////////////////////////////////////
+    // Legend position
+    ////////////////////////////////////////////////////////
+    this.legendInfo.position = String(this.getUiMapOption().legend.pos);
+
+    ////////////////////////////////////////////////////////
+    // Layer info
+    ////////////////////////////////////////////////////////
+    const legendInfo: any = {};
+
+    // Layer
+    const layer: UILayers = this.getUiMapOption().layers[layerIndex];
+
+    // 공간연산을 하게 되면 data 값이 uiOption 또는 layer의 index가 다르기 때문에 아래와 같이 dataIndex 변환
+    let dataIndex: number = layerIndex;
+    if (isAnalysis && _.isUndefined(this.getUiMapOption().analysis && this.getUiMapOption().analysis['use'] === true)) {
+      dataIndex = this.data.length > -1 ? this.data.length : 0;
+    }
+
+    // Layer name
+    legendInfo.name = layer.name;
+
+    // when layer type is symbol, layer symbol exists, set point type by symbols
+    if ((MapLayerType.SYMBOL === layer.type && layer.symbol)
+      || (MapLayerType.CLUSTER === layer.type && layer.symbol)) {
+      legendInfo.pointType = layer.symbol.toString();
+      // set circle by default
+    } else {
+      legendInfo.pointType = MapSymbolType.CIRCLE.toString();
+    }
+
+    // Color data
+    legendInfo.color = [];
+
+    // convert symbol, tile to point, hexagon
+    const layerType = MapLayerType.SYMBOL === layer.type || MapLayerType.CLUSTER === layer.type ? 'Point' : MapLayerType.TILE === layer.type ? 'Hexagon' : layer.type.toString();
+
+    // Layer color type
+    legendInfo.type = _.startCase(layerType) + ' Color';
+
+    ////////////////////////////////////////////////////////
+    // Size by measure (Symbol layer only)
+    ////////////////////////////////////////////////////////
+
+    if ((MapLayerType.SYMBOL === layer.type && _.eq(layer.size.by, MapBy.MEASURE)) || (MapLayerType.CLUSTER === layer.type && _.eq(layer.size.by, MapBy.MEASURE))) {
+      legendInfo.radiusColumn = 'By ' + ChartUtil.getFieldAlias(layer.size.column, this.shelf.layers[layerIndex].fields);
+    }
+
+    ////////////////////////////////////////////////////////
+    // Color by dimension
+    ////////////////////////////////////////////////////////
+    if (_.eq(layer.color.by, MapBy.DIMENSION)) {
+
+      // Layer column
+      legendInfo.column = 'By ' + ChartUtil.getFieldAlias(layer.color.column, this.shelf.layers[layerIndex].fields, layer.color.aggregationType);
+
+      if (layer.color.ranges) {
+        _.each(layer.color.ranges, (range) => {
+          const colorInfo: any = {};
+          colorInfo.color = range.color;
+          colorInfo.column = range['column'];
+          legendInfo.color.push(colorInfo);
+        });
+      } else {
+        if (!_.eq(layer.color.column, MapBy.NONE)) {
+          const ranges = this.setDimensionColorRange(layer, this.data[dataIndex], this.getColorList(layer), []);
+          _.each(ranges, (range) => {
+            const colorInfo: any = {};
+            colorInfo.color = range.color;
+            colorInfo.column = range['column'];
+            if (colorInfo.column !== 'undefined') {
+              legendInfo.color.push(colorInfo);
+            }
+          });
+        } else {
+          _.each(this.getUiMapOption().fieldList, (field) => {
+            const colorInfo: any = {};
+            colorInfo.color = '#602663';
+            colorInfo.column = field;
+            legendInfo.color.push(colorInfo);
+          });
+        }
+      }
+    }
+      ////////////////////////////////////////////////////////
+      // Color by measure
+    ////////////////////////////////////////////////////////
+    else if (_.eq(layer.color.by, MapBy.MEASURE)) {
+
+      // Layer column
+      legendInfo.column = 'By ' + ChartUtil.getFieldAlias(layer.color.column, this.shelf.layers[layerIndex].fields, layer.color.aggregationType);
+
+      if (layer.color.ranges) {
+        _.each(layer.color.ranges, (range, index) => {
+          let minVal: number = range.fixMin;
+          let maxVal: number = range.fixMax;
+
+          if (minVal === null) minVal = maxVal;
+          if (maxVal === null) maxVal = minVal;
+
+          const colorInfo: any = {};
+          colorInfo.color = range.color;
+          if (index === 0) {
+            colorInfo.column = ' ＞ ' + FormatOptionConverter.getFormatValue(minVal, this.getUiMapOption().valueFormat);
+          } else if (index === layer.color.ranges.length - 1) {
+            colorInfo.column = ' ≤ ' + FormatOptionConverter.getFormatValue(maxVal, this.getUiMapOption().valueFormat);
+          } else {
+            colorInfo.column = FormatOptionConverter.getFormatValue(minVal, this.getUiMapOption().valueFormat)
+              + ' ~ ' + FormatOptionConverter.getFormatValue(maxVal, this.getUiMapOption().valueFormat);
+          }
+          legendInfo.color.push(colorInfo);
+        });
+      } else {
+
+        if (this.data[dataIndex].valueRange && this.data[dataIndex].valueRange[ChartUtil.getFieldAlias(layer.color.column, this.shelf.layers[layerIndex].fields, layer.color.aggregationType)]) {
+
+          const ranges = ColorOptionConverter.setMapMeasureColorRange(this.getUiMapOption(), this.data[dataIndex], this.getColorList(layer), layerIndex, this.shelf.layers[layerIndex].fields);
+
+          _.each(ranges, (range, index) => {
+            let minVal: number = range.fixMin;
+            let maxVal: number = range.fixMax;
+
+            if (minVal === null) minVal = maxVal;
+            if (maxVal === null) maxVal = minVal;
+
+            const colorInfo: any = {};
+            colorInfo.color = range.color;
+            if (index === 0) {
+              colorInfo.column = ' ＞ ' + FormatOptionConverter.getFormatValue(minVal, this.getUiMapOption().valueFormat);
+            } else if (index === ranges.length - 1) {
+              colorInfo.column = ' ≤ ' + FormatOptionConverter.getFormatValue(maxVal, this.getUiMapOption().valueFormat);
+            } else {
+              colorInfo.column = FormatOptionConverter.getFormatValue(minVal, this.getUiMapOption().valueFormat)
+                + ' ~ ' + FormatOptionConverter.getFormatValue(maxVal, this.getUiMapOption().valueFormat);
+            }
+            legendInfo.color.push(colorInfo);
+          });
+        }
+
+        // if(this.getUiMapOption().layers[i].color["customMode"]) {
+        //   legendHtml = '<div class="ddp-ui-layer">' +
+        //     '<span class="ddp-label">' + this.getUiMapOption().layers[i].name + '</span>' +
+        //     '<span class="ddp-data">' + this.getUiMapOption().layers[i].type + ' by ' + this.getUiMapOption().layers[i].color.column + '</span>' +
+        //     '<ul class="ddp-list-remark">';
+        //
+        //   if(this.getUiMapOption().layers[i].color["customMode"] === 'SECTION') {
+        //     let rangesLength = this.getUiMapOption().layers[i].color["ranges"].length;
+        //     this.getUiMapOption().layers[i].color["ranges"][0]["isMax"] = true;
+        //     this.getUiMapOption().layers[i].color["ranges"][rangesLength-1]["isMin"] = true;
+        //
+        //     for(let range of this.getUiMapOption().layers[i].color["ranges"]) {
+        //
+        //       let minVal = range.fixMin;
+        //       let maxVal = range.fixMax;
+        //
+        //       if(minVal === null) minVal = 0;
+        //       if(maxVal === null) maxVal = minVal;
+        //
+        //       legendHtml = legendHtml + '<li><em class="ddp-bg-remark-r" style="background-color:' + range.color + '"></em>';
+        //       if (range["isMax"]) {
+        //         legendHtml = legendHtml + ' ＞ ' + FormatOptionConverter.getFormatValue(minVal, this.getUiMapOption().valueFormat);
+        //       } else if (range["isMin"]) {
+        //         legendHtml = legendHtml + ' ≤ ' + FormatOptionConverter.getFormatValue(maxVal, this.getUiMapOption().valueFormat);
+        //       } else {
+        //         legendHtml = legendHtml + FormatOptionConverter.getFormatValue(minVal, this.getUiMapOption().valueFormat) + ' ~ ' + FormatOptionConverter.getFormatValue(maxVal, this.getUiMapOption().valueFormat);
+        //       }
+        //       legendHtml = legendHtml + '</li>';
+        //     }
+        //   }
+        // }
+      }
+    }
+      ////////////////////////////////////////////////////////
+      // None
+    ////////////////////////////////////////////////////////
+    else if (_.eq(layer.color.by, MapBy.NONE)) {
+
+      const colorInfo: any = {};
+      colorInfo.color = layer.color.schema;
+      // set heatmap color
+      if (_.eq(layer.type, MapLayerType.HEATMAP)) {
+        colorInfo.color = HeatmapColorList[layer.color.schema][(HeatmapColorList[layer.color.schema].length - 1)];
+      }
+      _.each(this.shelf.layers[layerIndex].fields, (field) => {
+        if ('user_expr' === field.field.type || (field.field.logicalType && field.field.logicalType.toString().indexOf('GEO') !== -1)) {
+          colorInfo.column = (isUndefined(field.alias) ? field.fieldAlias : field.alias);
+          return false;
+        }
+      });
+      legendInfo.color.push(colorInfo);
+
+    }
+      ////////////////////////////////////////////////////////
+      // Error
+    ////////////////////////////////////////////////////////
+    else {
+      return;
+    }
+
+    this.legendInfo.layer.push(legendInfo);
+
+    ////////////////////////////////////////////////////////
+    // Apply
+    ////////////////////////////////////////////////////////
+
+    this.legendInfo.enable = true;
+  }
+
+  /**
+   * return ranges of color by dimension
+   * @returns {any}
+   */
+  private setDimensionColorRange(layer: UILayers, data: any, colorList: any, _colorAlterList = []): ColorRange[] {
+
+    const rangeList = [];
+    const featureList = [];
+    if (data) {
+      _.each(data.features, (feature) => {
+        featureList.push(feature.properties)
+      });
+    }
+
+    const featuresGroup = _.groupBy(featureList, ChartUtil.getFieldAlias(layer.color.column, this.shelf.layers[this.getUiMapOption().layerNum].fields, layer.color.aggregationType));
+    _.each(Object.keys(featuresGroup), (column, index) => {
+      const color = colorList[index % colorList.length];
+      rangeList.push({column: column, color: color});
+    });
+
+    return rangeList;
+  }
+
+  /**
+   * Check UI Option (Spec) => Shelf add & remove
+   */
+  private checkOption(uiOption: UIMapOption): void {
+
+    for (let index: number = 0; index < this.shelf.layers.length; index++) {
+
+      let isAnalysisUse: boolean = false;
+      let analysisAggrColumn: string;
+      if (!_.isUndefined(this.uiOption['analysis']) && !_.isUndefined(this.uiOption['analysis']['use']) && this.uiOption['analysis']['use']) {
+        isAnalysisUse = this.uiOption['analysis']['use'];
+        analysisAggrColumn = this.uiOption['analysis']['operation']['aggregation']['column'];
+        if (index !== this.shelf.layers.length - 1) {
+          continue;
+        }
+      }
+
+      const layer: UILayers = uiOption.layers[index];
+      const shelf: GeoField[] = _.cloneDeep(this.shelf.layers[index].fields);
+
+      ////////////////////////////////////////////////////////
+      // Set geo type
+      ////////////////////////////////////////////////////////
+
+      const layerType: MapLayerType = layer.type;
+
+      let field = null;
+      _.each(this.shelf.layers[index].fields, (fieldTemp) => {
+        if (fieldTemp != null && fieldTemp.field.logicalType && fieldTemp.field.logicalType.toString().indexOf('GEO') !== -1) {
+          field = fieldTemp;
+          return false;
+        }
+      });
+
+      // Option panel change cancel, not current shelf change
+      if (!this.drawByType || String(this.drawByType) === '' || (EventType.CHANGE_PIVOT === this.drawByType && uiOption.layerNum !== index)
+        || isNullOrUndefined(field)) {
+        continue;
+      }
+
+      const geomType = field.field.logicalType.toString();
+
+      // Set layer type
+      if (_.eq(geomType, LogicalType.GEO_LINE) && !_.eq(layerType, MapLayerType.LINE)) {
+        const lineLayer: UILineLayer = layer as UILineLayer;
+        lineLayer.type = MapLayerType.LINE;
+        lineLayer.thickness = {
+          by: MapBy.NONE,
+          column: 'NONE',
+          maxValue: 10
+        };
+      } else if (_.eq(geomType, LogicalType.GEO_POLYGON) && !_.eq(layerType, MapLayerType.POLYGON)) {
+        const polygonLayer: UIPolygonLayer = layer as UIPolygonLayer;
+        polygonLayer.type = MapLayerType.POLYGON;
+        polygonLayer.outline
+      }
+
+      ////////////////////////////////////////////////////////
+      // Cluster check
+      ////////////////////////////////////////////////////////
+      if (_.eq(layerType, MapLayerType.SYMBOL)) {
+        const symbolLayer: UISymbolLayer = layer as UISymbolLayer;
+        if (_.isUndefined(symbolLayer.clustering) || symbolLayer.clustering == null) {
+          // default 설정이 off 임
+          symbolLayer.clustering = false;
+        }
+      } else if (_.eq(layerType, MapLayerType.CLUSTER)) {
+        const symbolLayer: UISymbolLayer = layer as UISymbolLayer;
+        if (_.isUndefined(symbolLayer.clustering) || symbolLayer.clustering == null) {
+          symbolLayer.clustering = true;
+        }
+      }
+
+      ////////////////////////////////////////////////////////
+      // Add pivot(shelf) check
+      ////////////////////////////////////////////////////////
+
+      // ////////////////////////////////////////////////////////
+      // // Alias
+      // ////////////////////////////////////////////////////////
+      // _.each(uiOption.layers, (layer) => {
+      ////////////////////////////////////////////////////////
+      // Symbol
+      ////////////////////////////////////////////////////////
+      // if( _.eq(layer.type, MapLayerType.SYMBOL) ) {
+      // Symbol layer
+      // let symbolLayer: UISymbolLayer = <UISymbolLayer>layer;
+      // ///////////////////////////
+      // // Color
+      // ///////////////////////////
+      // if( _.eq(layer.color.by, MapBy.MEASURE) || _.eq(layer.color.by, MapBy.DIMENSION) ) {
+      // if( _.eq(layer.color.by, MapBy.MEASURE) ) {
+      //   let column: string = layer.color.column;
+      //   // _.each(this.shelf.layers, (shelf) => {
+      //     _.each(shelf, (field) => {
+      //       if( _.eq(column, field['name']) ) {
+      //         layer.color.column = ChartUtil.getAlias(field);
+      //       }
+      //     });
+      //   // });
+      // }
+      // ///////////////////////////
+      // // Size
+      // ///////////////////////////
+      // if( _.eq(symbolLayer.size.by, MapBy.MEASURE) ) {
+      //   let column: string = symbolLayer.size.column;
+      //   _.each(this.shelf.layers, (shelf) => {
+      //     _.each(shelf, (field) => {
+      //       if( _.eq(column, field['name']) ) {
+      //         symbolLayer.size.column = ChartUtil.getAlias(field);
+      //       }
+      //     });
+      //   });
+      // }
+      // }
+      // ////////////////////////////////////////////////////////
+      // // Line
+      // ////////////////////////////////////////////////////////
+      // else if( _.eq(layer.type, MapLayerType.LINE) ) {
+      //
+      // }
+      // ////////////////////////////////////////////////////////
+      // // Polygon
+      // ////////////////////////////////////////////////////////
+      // else if( _.eq(layer.type, MapLayerType.POLYGON) ) {
+      //
+      // }
+      // });
+      // ////////////////////////////////////////////////////////
+      // // Tooltip
+      // ////////////////////////////////////////////////////////
+      // _.each(option.toolTip.displayColumns, (column) => {
+      //
+      // });
+      // ////////////////////////////////////////////////////////
+      // // //End Alias
+      // ////////////////////////////////////////////////////////
+
+      // Find field
+      let isNone: boolean = true;
+      let isDimension: boolean = false;
+      let isMeasure: boolean = false;
+      _.each(shelf, (shelfField) => {
+        // analysis aggregation이 count 일 경우
+        if (isAnalysisUse && !_.isUndefined(shelfField['isCustomField']) && shelfField.alias === 'count') {
+          isNone = false;
+          isDimension = false;
+          isMeasure = true;
+        } else {
+          if ('user_expr' === shelfField.field.type || (shelfField.field.logicalType && shelfField.field.logicalType.toString().indexOf('GEO') === -1)) {
+            isNone = false;
+          }
+          // when logical type is not geo, type is dimension
+          if (('user_expr' === shelfField.field.type || (shelfField.field.logicalType && shelfField.field.logicalType.toString().indexOf('GEO') === -1)) && _.eq(shelfField.type, ShelveFieldType.DIMENSION)) {
+            isDimension = true;
+          }
+          if (_.eq(shelfField.type, ShelveFieldType.MEASURE)) {
+            isMeasure = true;
+          }
+        }
+      });
+
+      if (layerType === MapLayerType.CLUSTER) {
+        isMeasure = true;
+        isNone = false;
+        isDimension = false;
+        if (layer.color.by === MapBy.NONE) {
+          isMeasure = false;
+          isNone = true;
+        }
+      }
+
+      ////////////////////////////////////////////////////////
+      // set field list
+      ////////////////////////////////////////////////////////
+      this.checkFieldList(shelf, index);
+
+      ////////////////////////////////////////////////////////
+      // Color
+      ////////////////////////////////////////////////////////
+
+      // init custom user color setting
+      if (!isAnalysisUse) {
+        if (_.isUndefined(layer.color.settingUseFl) || layer.color.settingUseFl === false) {
+          layer.color.ranges = undefined;
+          layer.color['settingUseFl'] = false;
+        }
+      }
+
+      ///////////////////////////
+      // Color by None
+      ///////////////////////////
+      if (isNone) {
+        layer.color.by = MapBy.NONE;
+        if (layerType === MapLayerType.HEATMAP) {
+          (_.isUndefined(layer.color.heatMapSchema) || layer.color.heatMapSchema.indexOf('HC') === -1 ? layer.color.heatMapSchema = 'HC1' : layer.color.heatMapSchema);
+          layer.color.schema = layer.color.heatMapSchema;
+        } else if (layerType === MapLayerType.SYMBOL) {
+          (_.isUndefined(layer.color.symbolSchema) || layer.color.symbolSchema.indexOf('#') === -1 ? layer.color.symbolSchema = '#6344ad' : layer.color.symbolSchema);
+          layer.color.schema = layer.color.symbolSchema;
+        } else if (layerType === MapLayerType.TILE) {
+          (_.isUndefined(layer.color.tileSchema) || layer.color.tileSchema.indexOf('#') === -1 ? layer.color.tileSchema = '#6344ad' : layer.color.tileSchema);
+          layer.color.schema = layer.color.tileSchema;
+        } else if (layerType === MapLayerType.POLYGON) {
+          (_.isUndefined(layer.color.polygonSchema) || layer.color.polygonSchema.indexOf('#') === -1 ? layer.color.polygonSchema = '#6344ad' : layer.color.polygonSchema);
+          layer.color.schema = layer.color.polygonSchema;
+        } else if (layerType === MapLayerType.CLUSTER) {
+          (_.isUndefined(layer.color.clusterSchema) || layer.color.clusterSchema.indexOf('#') === -1 ? layer.color.clusterSchema = '#6344ad' : layer.color.clusterSchema);
+          layer.color.schema = layer.color.clusterSchema;
+        } else {
+          layer.color.schema = '#6344ad';
+        }
+        layer.color.column = null;
+        layer.color.aggregationType = null;
+        if (!_.isUndefined(layer.noneColor)) {
+          layer.color.schema = layer.noneColor;
+        }
+      }
+        ///////////////////////////
+        // Color by Measure
+        ///////////////////////////
+      // remove not isDimension => exceptional case select dimension and remove dimension
+      else if (isMeasure) {
+        layer.color.by = MapBy.MEASURE;
+        if (layerType === MapLayerType.HEATMAP) {
+          (_.isUndefined(layer.color.heatMapSchema) || layer.color.heatMapSchema.indexOf('HC') === -1 ? layer.color.heatMapSchema = 'HC1' : layer.color.heatMapSchema);
+          layer.color.schema = layer.color.heatMapSchema;
+        } else if (layerType === MapLayerType.SYMBOL) {
+          (_.isUndefined(layer.color.symbolSchema) || layer.color.symbolSchema.indexOf('VC') === -1 ? layer.color.symbolSchema = 'VC1' : layer.color.symbolSchema);
+          layer.color.schema = layer.color.symbolSchema;
+        } else if (layerType === MapLayerType.TILE) {
+          (_.isUndefined(layer.color.tileSchema) || layer.color.tileSchema.indexOf('VC') === -1 ? layer.color.tileSchema = 'VC1' : layer.color.tileSchema);
+          layer.color.schema = layer.color.tileSchema;
+        } else if (layerType === MapLayerType.POLYGON) {
+          (_.isUndefined(layer.color.polygonSchema) || layer.color.polygonSchema.indexOf('VC') === -1 ? layer.color.polygonSchema = 'VC1' : layer.color.polygonSchema);
+          layer.color.schema = layer.color.polygonSchema;
+        } else if (layerType === MapLayerType.CLUSTER) {
+          (_.isUndefined(layer.color.clusterSchema) || layer.color.clusterSchema.indexOf('VC') === -1 ? layer.color.clusterSchema = 'VC1' : layer.color.clusterSchema);
+          layer.color.schema = layer.color.clusterSchema;
+        } else {
+          layer.color.schema = 'VC1';
+        }
+        if (_.isUndefined(layer.color.column) || StringUtil.isEmpty(layer.color.column)) {
+          layer.color.column = uiOption.fieldMeasureList[0]['name'];
+        }
+        layer.color.aggregationType = uiOption.fieldMeasureList[0]['aggregationType'];
+        if (isAnalysisUse) {
+          uiOption.fieldMeasureList.forEach((item) => {
+            if (item.name === analysisAggrColumn) {
+              layer.color.column = item.name;
+              layer.color.aggregationType = item.aggregationType;
+            }
+          });
+        }
+        if (!_.isUndefined(layer.measureColor)) {
+          layer.color.schema = layer.measureColor;
+        }
+        if (isAnalysisUse) {
+          let dataIndex = 0;
+          (this.data.length > 1 ? dataIndex = this.data.length - 1 : dataIndex = 0);
+          layer.color.ranges = ColorOptionConverter.setMapMeasureColorRange(uiOption, this.data[dataIndex], this.getColorList(layer), index, shelf);
+        } else {
+          if (_.isUndefined(layer.color.settingUseFl) || layer.color.settingUseFl === false) {
+            layer.color.ranges = ColorOptionConverter.setMapMeasureColorRange(uiOption, this.data[index], this.getColorList(layer), index, shelf);
+          }
+        }
+      }
+        ///////////////////////////
+        // Color by Dimension
+        ///////////////////////////
+      // hexagon && isDimension => init as none
+      else if (MapLayerType.TILE === layer.type && isDimension) {
+        layer.color.by = MapBy.NONE;
+        (_.isUndefined(layer.color.tileSchema) || layer.color.tileSchema.indexOf('#') === -1 ? layer.color.tileSchema = '#6344ad' : layer.color.tileSchema);
+        layer.color.column = null;
+        layer.color.aggregationType = null;
+        if (!_.isUndefined(layer.noneColor)) {
+          layer.color.schema = layer.noneColor;
+        }
+      } else if (isDimension) {
+        layer.color.by = MapBy.DIMENSION;
+        if (layerType === MapLayerType.SYMBOL) {
+          (_.isUndefined(layer.color.symbolSchema) || layer.color.symbolSchema.indexOf('SC') === -1 ? layer.color.symbolSchema = 'SC1' : layer.color.symbolSchema);
+          layer.color.schema = layer.color.symbolSchema;
+        } else if (layerType === MapLayerType.TILE) {
+          (_.isUndefined(layer.color.tileSchema) || layer.color.tileSchema.indexOf('SC') === -1 ? layer.color.tileSchema = 'SC1' : layer.color.tileSchema);
+          layer.color.schema = layer.color.tileSchema;
+        } else if (layerType === MapLayerType.POLYGON) {
+          (_.isUndefined(layer.color.polygonSchema) || layer.color.polygonSchema.indexOf('SC') === -1 ? layer.color.polygonSchema = 'SC1' : layer.color.polygonSchema);
+          layer.color.schema = layer.color.polygonSchema;
+        } else if (layerType === MapLayerType.CLUSTER) {
+          (_.isUndefined(layer.color.clusterSchema) || layer.color.clusterSchema.indexOf('SC') === -1 ? layer.color.clusterSchema = 'SC1' : layer.color.clusterSchema);
+          layer.color.schema = layer.color.clusterSchema;
+        } else {
+          layer.color.schema = 'SC1';
+        }
+        layer.color.column = uiOption.fielDimensionList[0]['name'];
+        layer.color.aggregationType = null;
+        if (!_.isUndefined(layer.dimensionColor)) {
+          layer.color.schema = layer.dimensionColor;
+        }
+        if (uiOption.fielDimensionList[0]['format']) layer.color.granularity = uiOption.fielDimensionList[0]['format']['unit'].toString();
+      }
+
+      ////////////////////////////////////////////////////////
+      // Symbol
+      ////////////////////////////////////////////////////////
+      if ((_.eq(layer.type, MapLayerType.SYMBOL)) || (layerType === MapLayerType.CLUSTER)) {
+
+        // Symbol layer
+        const symbolLayer: UISymbolLayer = layer as UISymbolLayer;
+
+        ////////////////////////////////////////////////////////
+        // Size
+        ////////////////////////////////////////////////////////
+
+        ///////////////////////////
+        // Size by None
+        ///////////////////////////
+        if (isNone || !isMeasure) {
+          symbolLayer.size.by = MapBy.NONE;
+        }
+          ///////////////////////////
+          // Size by Measure
+        ///////////////////////////
+        else if (isMeasure) {
+          symbolLayer.size.by = MapBy.MEASURE;
+          if (StringUtil.isEmpty(symbolLayer.size.column) || symbolLayer.size.column === 'NONE') {
+            symbolLayer.size.column = uiOption.fieldMeasureList[0]['name'];
+          }
+        }
+      }
+        ////////////////////////////////////////////////////////
+        // Heatmap
+      ////////////////////////////////////////////////////////
+      else if (_.eq(layer.type, MapLayerType.HEATMAP)) {
+
+        ///////////////////////////
+        // Legend
+        ///////////////////////////
+        // when measure doesn't exist, hide/disable legend
+        if (!uiOption.fieldMeasureList || uiOption.fieldMeasureList.length === 0) {
+          this.uiOption.legend.auto = false;
+          this.uiOption.legend.showName = false;
+        } else {
+          this.uiOption.legend.auto = true;
+        }
+      }
+        ////////////////////////////////////////////////////////
+        // Hexagon
+      ////////////////////////////////////////////////////////
+      else if (_.eq(layer.type, MapLayerType.TILE)) {
+
+        // Hexagon layer
+        // const hexagonLayer: UITileLayer = layer as UITileLayer;
+      }
+        ////////////////////////////////////////////////////////
+        // Line
+      ////////////////////////////////////////////////////////
+      else if (_.eq(layer.type, MapLayerType.LINE) || _.eq(layer.type, MapLayerType.MULTILINESTRING)) {
+
+        // line layer
+        const lineLayer: UILineLayer = layer as UILineLayer;
+
+        ///////////////////////////
+        // Thickness by None
+        ///////////////////////////
+        if (isNone || !isMeasure) {
+          lineLayer.thickness.by = MapBy.NONE;
+        }
+          ///////////////////////////
+          // Thickness by Measure
+        ///////////////////////////
+        else if (isMeasure) {
+          lineLayer.thickness.by = MapBy.MEASURE;
+          lineLayer.thickness.column = this.uiOption.fieldMeasureList[0]['name'];
+        }
+      }
+        ////////////////////////////////////////////////////////
+        // Polygon
+      ////////////////////////////////////////////////////////
+      else if (_.eq(layer.type, MapLayerType.POLYGON)) {
+
+      }
+
+      ////////////////////////////////////////////////////////
+      // Tooltip
+      ////////////////////////////////////////////////////////
+      if (!uiOption.toolTip.displayColumns) uiOption.toolTip.displayColumns = [];
+      const itemsForTooltip = TooltipOptionConverter.returnTooltipDataValue(shelf);
+      if (!isAnalysisUse) {
+        // multi layer 를 고려해야 함
+        const fieldsForTooltip = ChartUtil.returnNameFromField(itemsForTooltip);
+        fieldsForTooltip.forEach((tooltipField) => {
+          this.uiOption.toolTip.displayColumns.push(tooltipField);
+        });
+      } else {
+        // 공간연산 실행 시 보여줘야하는 tooltip
+        this.uiOption.toolTip.displayColumns = ChartUtil.returnNameFromField(itemsForTooltip);
+      }
+    }
+  }
+
+  /**
+   * Return alpha color
+   * @param hex
+   * @param alpha
+   */
+  // @ts-ignore
+  private hexToRgbA(hex, alpha): string {
+    if (/^#([A-Fa-f0-9]{3}){1,2}$/.test(hex)) {
+      let c = hex.substring(1).split('');
+      if (c.length === 3) {
+        c = [c[0], c[0], c[1], c[1], c[2], c[2]];
+      }
+      c = '0x' + c.join('');
+      return 'rgba(' + [(c >> 16) & 255, (c >> 8) & 255, c & 255].join(',') + ',' + alpha + ')';
+    } else {
+      return 'rgba(255,255,255,1)';
+    }
+  }
+
+  /**
+   * when data zoom ends
+   * @param event
+   */
+  private zoomFunction = (event) => {
+
+    const that = this;
+
+    // save current chart zoom
+    this.uiOption.chartZooms = this.additionalSaveDataZoomRange();
+
+    const mapUIOption = (this.uiOption as UIMapOption);
+    // zoom size
+    mapUIOption.zoomSize = Math.round(event.frameState.viewState.zoom);
+
+    if ((_.isUndefined(mapUIOption.lowerCorner) && _.isUndefined(mapUIOption.upperCorner)) || that.preZoomSize === 0 || that.isResize) {
+      this.preZoomSize = mapUIOption.zoomSize;
+      this.setUiExtentByEvent(event);
+      this.isResize = false;
+      return;
+    }
+
+    const preLowerCorner = mapUIOption.lowerCorner.split(' ');
+    const preUpperCorner = mapUIOption.upperCorner.split(' ');
+    const currentMapExtent = this.olmap.getView().calculateExtent(event.map.getSize());
+
+    // 이전 좌표 및 줌 레벨이 다를 경우에만 다시 호출
+    if ((Number(preLowerCorner[0]).toFixed(10) !== currentMapExtent[0].toFixed(10) && Number(preLowerCorner[1]).toFixed(10) !== currentMapExtent[1].toFixed(10)
+      && Number(preUpperCorner[0]).toFixed(10) !== currentMapExtent[2].toFixed(10) && Number(preUpperCorner[1]).toFixed(10) !== currentMapExtent[3].toFixed(10))
+      || (that.preZoomSize !== mapUIOption.zoomSize)) {
+
+      let isAllChangeCoverage: boolean = false;
+      mapUIOption.layers.forEach((layer) => {
+        if (!_.isUndefined(layer['changeCoverage']) && layer['changeCoverage'] === true) {
+          isAllChangeCoverage = true;
+        }
+      });
+
+      // map ui lat, lng
+      this.setUiExtentByEvent(event);
+      if (mapUIOption.upperCorner.indexOf('NaN') !== -1 || mapUIOption.lowerCorner.indexOf('NaN') !== -1 || isAllChangeCoverage) {
+        // coverage value reset
+        mapUIOption.layers.forEach((layer) => {
+          if (isAllChangeCoverage && !_.isUndefined(layer['changeCoverage'])) {
+            layer['changeCoverage'] = false;
+          }
+        });
+        return;
+      }
+
+      // 줌 변경
+      this._isChangedZoom = true;
+
+      if( this.isLoadData ) {
+        this.changeDrawEvent.emit();
+      }
+    }
+
+    // TODO selection (drag end)
+    if (!this.isPage) {
+
+    }
+  }
+
+  /**
+   * set map data zoom setting
+   * @returns {UIChartZoom[]}
+   */
+  private additionalSaveDataZoomRange(): UIChartZoom[] {
+
+    const resultList: UIChartZoom[] = [];
+
+    const center = this.olmap.getView().getCenter();
+
+    resultList.push({startValue: center[0], endValue: center[1], count: this.olmap.getView().getZoom()});
+
+    return resultList;
+  }
+
+  // private getMinZoom() {
+  //   const width = this.area.nativeElement.clientWidth;
+  //
+  //   return Math.ceil(Math.LOG2E * Math.log(width / 256));
+  // }
+
+  /**
+   * Get color list
+   * @param layer
+   */
+  private getColorList(layer: UILayers): any[] {
+
+    let colorList = [];
+    if (_.eq(layer.type, MapLayerType.HEATMAP)) {
+      colorList = HeatmapColorList[layer.color.schema];
+    } else {
+      colorList = ChartColorList[layer.color.schema];
+    }
+    return _.cloneDeep(colorList);
+  }
+
+  /**
+   * map single selection
+   * @param event
+   */
+  private mapSelectionListener = (event) => {
+
+    // const scope: any = this;
+
+    let selectMode: ChartSelectMode;
+    // selection filter data
+    const selectData = [];
+    // all unselected
+    let noneDataCnt: boolean = true;
+    // layer number
+    // let layerNum = 0;
+
+    let feature = this.olmap.forEachFeatureAtPixel(event.pixel, (PixcelFeature) => {
+      return PixcelFeature;
+    });
+
+    // when feature exists
+    if (feature) {
+      // Cluster check
+      const features = feature.get('features');
+      if (!isNullOrUndefined(features)) {
+        if (features.length > 1) {
+          return;
+        }
+        feature = features[0];
+      }
+
+      // set feature layerNum
+      // layerNum = feature.getProperties()['layerNum'];
+
+      // set select mode
+      if (feature.getProperties()['selection']) {
+        selectMode = ChartSelectMode.SUBTRACT;
+      } else {
+        selectMode = ChartSelectMode.ADD;
+      }
+
+      // get dimensions (except geo) from layer shelf
+      const dimensionLayer = this.originShelf.layers[this.uiOption.layerNum].fields.filter((item) => {
+        if ('dimension' === item.type && ('user_expr' === item.field.type || (item.field.logicalType && -1 === item.field.logicalType.toString().indexOf('GEO')))) {
+          return item;
+        }
+      });
+
+      // remove others except dimension values
+      const properties = _.cloneDeep(feature.getProperties());
+      delete properties['geometry'];
+      delete properties['layerNum'];
+
+      // set data for seleciton filter
+      for (const item of dimensionLayer) {
+        for (const key in properties) {
+          if (key) {
+            const alias = ChartUtil.getAlias(item);
+            if (alias === key) {
+
+              const dataValue = properties[key];
+
+              // when it's add mode
+              if (ChartSelectMode.ADD === selectMode) {
+                feature.set('selection', selectMode);
+
+                // set data count
+                if (item['data'] && -1 !== item['data'].indexOf(dataValue)) {
+                  item['dataCnt'][dataValue] = ++item['dataCnt'][dataValue];
+                } else {
+
+                  if (!item['dataCnt']) item['dataCnt'] = {};
+                  item['dataCnt'][dataValue] = 1;
+                }
+
+                item['data'] = [dataValue];
+
+                selectData.push(_.cloneDeep(item));
+
+                // when it's substract mode
+              } else {
+                feature.unset('selection');
+
+                item['dataCnt'][dataValue]--;
+
+                // when dataCnt is 0, remove selection filter
+                if (0 === item['dataCnt'][dataValue]) {
+                  item['data'] = [dataValue];
+                  selectData.push(_.cloneDeep(item));
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // when dataCnt is false (when dataCnt is not zero)
+      for (const item of selectData) {
+        if (item['dataCnt']) {
+          for (const key in item['dataCnt']) {
+            if (0 < item['dataCnt'][key]) {
+              noneDataCnt = false;
+              break;
+            }
+          }
+        }
+      }
+      // clear all selection filters
+    } else {
+      selectMode = ChartSelectMode.CLEAR;
+    }
+
+    // when select data exists, or clear mode
+    if (ChartSelectMode.CLEAR === selectMode || (selectData && selectData.length > 0)) {
+      // emit event
+      this.chartSelectInfo.emit(new ChartSelectInfo(selectMode, selectData, this.params));
+    }
+
+    // when last feature is sbustracted, dataCnt is 0 in all of layers => not set selectMode
+    if (ChartSelectMode.CLEAR === selectMode || (ChartSelectMode.SUBTRACT === selectMode && noneDataCnt)) {
+      selectMode = undefined;
+    }
+  }
+
+  /**
+   * set selection mode to feature
+   * @param scope
+   * @param feature
+   * @returns {boolean}
+   */
+  // @ts-ignore
+  private setFeatureSelectionMode(scope: any, feature): boolean {
+
+    let filterFl: boolean = false;
+
+    if (scope.widgetDrawParam
+      && scope.widgetDrawParam.selectFilterListList
+      && scope.widgetDrawParam.selectFilterListList.length > 0) {
+
+      _.each(scope.widgetDrawParam.selectFilterListList, (filter) => {
+        _.each(filter.data, (data) => {
+
+          // find feature by selected properties
+          const properties = feature.getProperties();
+
+          // set selection filter select mode
+          if (properties[filter.alias] === data) {
+            feature.set('selection', ChartSelectMode.ADD);
+          }
+        });
+      });
+
+      // selection filter exists
+      filterFl = true;
+    }
+
+    return filterFl;
+  }
+
+  /**
+   * set uiOption min / max value
+   */
+  private setMinMax() {
+
+    if (this.shelf.layers.length === 0) {
+      return;
+    }
+
+    for (let idx = 0; idx < this.shelf.layers.length; idx++) {
+      const uiOption = this.getUiMapOption();
+      const layer: UILayers = uiOption.layers[idx];
+      const shelf: GeoField[] = _.cloneDeep(this.shelf.layers[idx].fields);
+
+      let isAnalysisUse: boolean = false;
+      if (!_.isUndefined(uiOption['analysis']) && !_.isUndefined(uiOption['analysis']['use']) && uiOption['analysis']['use']) {
+        isAnalysisUse = true;
+      }
+
+      let valueRange;
+      if (isAnalysisUse) {
+
+        if (idx !== this.shelf.layers.length - 1) {
+          continue;
+        }
+
+        let alias;
+        if (_.isUndefined(layer.color.aggregationType)) {
+          alias = layer.color.column;
+        } else {
+          alias = layer.color.aggregationType + '(' + layer.color.column + ')';
+        }
+
+        valueRange = _.cloneDeep(this.data[uiOption.analysis['layerNum']]['valueRange'][alias]);
+
+        if (valueRange) {
+          layer.color.minValue = valueRange.minValue;
+          layer.color.maxValue = valueRange.maxValue;
+        }
+
+      } else {
+
+        let alias = ChartUtil.getFieldAlias(layer.color.column, shelf, layer.color.aggregationType);
+        // symbol 타입 , cluster 사용일 경우
+        // if (layer.type == MapLayerType.SYMBOL && layer['clustering']) {
+        if (layer.type === MapLayerType.CLUSTER && layer['clustering']) {
+          alias = 'count';
+        }
+
+        if (_.isUndefined(this.data[idx])) {
+          continue;
+        }
+        valueRange = _.cloneDeep(this.data[idx]['valueRange'][alias]);
+
+        if (valueRange) {
+          // layer type 이 변경될 경우 변경, 아닐경우 최대 최소 값으로 변경
+          if (this.drawByType === EventType.MAP_CHANGE_OPTION || this.drawByType === EventType.CHANGE_PIVOT) {
+            layer.color.minValue = valueRange.minValue;
+            layer.color.maxValue = valueRange.maxValue;
+          } else {
+            (_.isUndefined(layer.color.minValue) || layer.color.minValue > valueRange.minValue ? layer.color.minValue = valueRange.minValue : layer.color.minValue);
+            (_.isUndefined(layer.color.maxValue) || layer.color.maxValue < valueRange.maxValue ? layer.color.maxValue = valueRange.maxValue : layer.color.maxValue);
+          }
+        }
+      }
+
+      if (layer.type === MapLayerType.CLUSTER && layer['clustering'] && !_.isUndefined(layer.color.ranges) && (_.isUndefined(layer.color.changeRange) || layer.color.changeRange) && !isAnalysisUse) {
+        const colorList = this.getColorList(layer);
+        const rangeList = uiOption.layers[idx].color.ranges;
+        // rangeList 에서의 색상을 색상리스트에 설정
+        rangeList.reverse().forEach((item, index) => {
+          colorList[index] = item.color;
+        });
+        layer.color.ranges = ColorOptionConverter.setMapMeasureColorRange(this.getUiMapOption(), this.data[idx], colorList, idx, shelf, rangeList);
+      }
+
+      _.each(shelf, (field) => {
+        if (_.eq(field.type, ShelveFieldType.MEASURE)) {
+          if (!_.isUndefined(layer.color.ranges) && _.eq(field.name, layer.color.column) && (_.isUndefined(layer.color.changeRange) || layer.color.changeRange)) {
+            const colorList = this.getColorList(layer);
+            const rangeList = uiOption.layers[idx].color.ranges;
+            // rangeList 에서의 색상을 색상리스트에 설정
+            rangeList.reverse().forEach((item, index) => {
+              colorList[index] = item.color;
+            });
+            if (isAnalysisUse) {
+              // 비교 레이어 영역 설정 여부
+              if (!_.isUndefined(uiOption.analysis['includeCompareLayer']) && uiOption.analysis['includeCompareLayer'] === true) {
+                // map chart 일 경우 aggregation type 변경시 min/max 재설정 필요
+                uiOption['layers'][uiOption['layerNum']]['isColorOptionChanged'] = true;
+                layer.color.ranges = ColorOptionConverter.setMapMeasureColorRange(this.getUiMapOption(), this.data[uiOption.analysis['layerNum'] + 1], colorList, idx, shelf, rangeList);
+              } else {
+                layer.color.ranges = ColorOptionConverter.setMapMeasureColorRange(this.getUiMapOption(), this.data[uiOption.analysis['layerNum']], colorList, idx, shelf, rangeList);
+              }
+            } else {
+              layer.color.ranges = ColorOptionConverter.setMapMeasureColorRange(this.getUiMapOption(), this.data[idx], colorList, idx, shelf, rangeList);
+            }
+          }
+        }
+      });
+
+    }
+  }
+
+  // public selectedLayer(selectedIndex:number) {
+  //   this.layerMap.forEach( item => {
+  //     item.layerValue.setZIndex(0);
+  //     if( item['id'] == selectedIndex ) {
+  //       item.layerValue.setZIndex(1);
+  //     }
+  //   });
+  //   this.changeDetect.detectChanges();
+  // }
+
+  /**
+   * check field list
+   * @param shelf
+   * @param layerIndex
+   */
+  private checkFieldList(shelf: any, layerIndex: number) {
+    // 선반값에서 해당 타입에 해당하는값만 field값으로 리턴
+    const getShelveReturnField = ((innerShelf: any, typeList: ShelveFieldType[]): AbstractField[] => {
+      const uiOption = this.uiOption;
+      let analysisCountAlias: string;
+      if (!_.isUndefined(uiOption['analysis']) && !_.isUndefined(uiOption['analysis']['use']) && uiOption['analysis']['use']) {
+        if (!_.isUndefined(uiOption['analysis']['operation']['aggregation']) && !_.isUndefined(uiOption['analysis']['operation']['aggregation']['column'])
+          && uiOption['analysis']['operation']['aggregation']['column'] === 'count') {
+          analysisCountAlias = uiOption['analysis']['operation']['aggregation']['column'];
+        }
+      }
+
+      const resultList: AbstractField[] = [];
+      innerShelf.map((item) => {
+        if (!_.isUndefined(analysisCountAlias) && analysisCountAlias === item.alias) {
+          resultList.push(item);
+        } else {
+          if ((_.eq(item.type, typeList[0]) || _.eq(item.type, typeList[1])) && (item.field && ('user_expr' === item.field.type || item.field.logicalType && -1 === item.field.logicalType.indexOf('GEO')))) {
+            resultList.push(item);
+          }
+        }
+      });
+      return resultList;
+    });
+
+    const layerOption = this.getUiMapOption().layers[layerIndex];
+    // cluster 타입일 경우
+    if (layerOption.type.toString() === 'cluster' && layerOption['clustering']) {
+
+      // 이미 변수가 선언이 되어 있어 강제로 변경
+      const defaultObject: any = {
+        aggregationType: null,
+        alias: 'count',
+        type: 'measure',
+        subRole: 'measure',
+        name: 'count',
+        isCustomField: true,
+        field: {
+          role: FieldRole.MEASURE,
+          logicalType: LogicalType.INTEGER
+        }
+      };
+      const tempList: any[] = [];
+      tempList.push(defaultObject);
+      this.uiOption.fieldMeasureList = tempList;
+    } else {
+      // 색상지정 기준 필드리스트 설정(measure list)
+      this.uiOption.fieldMeasureList = getShelveReturnField(shelf, [ShelveFieldType.MEASURE, ShelveFieldType.CALCULATED]);
+      // 색상지정 기준 필드리스트 설정(dimension list)
+      this.uiOption.fielDimensionList = getShelveReturnField(shelf, [ShelveFieldType.DIMENSION, ShelveFieldType.TIMESTAMP]);
+    }
+  }
+
+  /**
+   * remove layer
+   * @param layerNumber
+   */
+  private removeLayer(layerNumber: number) {
+    if (this.getUiMapOption().layers.length < (layerNumber + 1)) {
+      return;
+    }
+    this.layerMap.forEach((item, index) => {
+      if (layerNumber === index) {
+        this.olmap.removeLayer(item.layerValue)
+      }
+    });
+    this.layerMap.splice(layerNumber, 1);
+  }
+
+  /**
+   * current map ui lat, lng setting
+   */
+  private setUiExtentByEvent(event) {
+    if (event) {
+      this.setUiExtent(event.map);
+    }
+  }
+
+  /**
+   * current map ui lat, lng setting
+   */
+  private setUiExtent(map) {
+      const mapUIOption = this.uiOption as UIMapOption;
+      let mapExtent = map.getView().calculateExtent(map.getSize());
+
+      // projection 값 체크
+      mapExtent = new ol.proj.transformExtent(mapExtent, new ol.proj.get('EPSG:4326'), new ol.proj.get('EPSG:3857'));
+
+      const bottomLeft = new ol.proj.toLonLat(new ol.extent.getBottomLeft(mapExtent));
+      const topRight = new ol.proj.toLonLat(new ol.extent.getTopRight(mapExtent));
+
+      // console.log('left : ', this.wrapLon(bottomLeft[0]), ' bottom : ', bottomLeft[1]);
+      // console.log('right : ', this.wrapLon(topRight[0]), ' top : ', topRight[1]);
+
+      // EPSG 타입 확인
+      // 우측 상단
+      mapUIOption.upperCorner = this.wrapLon(topRight[0]) + ' ' + topRight[1];
+      // mapUIOption.upperCorner = mapExtent[2] + ' ' + mapExtent[3]; // EPSG 4326 좌표
+      // 좌측 하단
+      mapUIOption.lowerCorner = this.wrapLon(bottomLeft[0]) + ' ' + bottomLeft[1];
+      // mapUIOption.lowerCorner = mapExtent[0] + ' ' + bottomLeft[1];  // EPSG 4326 좌표
+  }
+
+  /**
+   * extent to lng
+   * @param value
+   * @returns {number}
+   */
+  private wrapLon(value) {
+    const lon = Math.floor((value + 180) / 360);
+    return value - (lon * 360);
+  }
+
+  /**
+   * geo field check
+   * @param layers
+   * @param index
+   * @returns {boolean}
+   */
+  private isGeoFieldCheck(layers: any, index): boolean {
+
+    let valid: boolean = false;
+
+    const fields: Field[] = layers[index].fields;
+
+    if (fields) {
+      for (const layer of fields) {
+        if (layer.field && layer.field.logicalType && -1 !== layer.field.logicalType.toString().indexOf('GEO')) {
+          valid = true;
+        }
+      }
+    }
+    return valid;
+  }
+
+  /**
+   * analysis를 위한 map draw
+   */
+  private drawAnalysis() {
+
+    this.loadingShow();
+
+    this.checkOption(this.getUiMapOption());
+
+    this.setMinMax();
+
+    const isMapCreation: boolean = this.createMap();
+
+    // reset legend data
+    this.legendInfo.layer = [];
+
+    for (let dataIndex = 0; dataIndex < this.data.length; dataIndex++) {
+
+      const dataType = _.isUndefined(this.data[dataIndex]['features']) || this.data[dataIndex]['features'].length <= 0 ? null : this.data[dataIndex]['features'][0]['geometry']['type'].toString().toLowerCase();
+
+      if (dataType === 'polygon' && this.getUiMapOption().analysis.includeCompareLayer === true && dataIndex === 0) {
+        this.includeCompareLayer(dataIndex, isMapCreation);
+      } else {
+        // Source
+        const source = new ol.source.Vector({crossOrigin: 'anonymous'});
+        // Creation feature
+        this.createAnalysisFeature(source, dataIndex);
+        // Creation layer
+        this.createAnalysisLayer(source, isMapCreation, dataIndex);
+      }
+    }
+
+    // Creation tooltip and Zoom
+    this.createMapOverLayEvent();
+
+    // create legend
+    this.createLegend(this.getUiMapOption().layerNum, true);
+
+    // Chart resize
+    if (this.drawByType != null || !_.isEmpty(this.drawByType))
+      this.olmap.updateSize();
+
+    this.loadingHide();
+    // 완료
+    this.drawFinished.emit();
+
+  }
+
+  /**
+   * analysis Feature
+   */
+  private createAnalysisFeature(source, dataIndex): void {
+    const data = this.data[dataIndex];
+    ////////////////////////////////////////////////////////
+    // Generate feature
+    ////////////////////////////////////////////////////////
+    // Feature list
+    const features = [];
+
+    // data 에서 geometry 값을 uiOption에 변경 여부
+    let isChangedType: boolean = false;
+
+    // Data set
+    for (let i = 0; i < data.features.length; i++) {
+
+      // data 에서 geometry 값을 추출, uiOption type에 적용
+      if (!isChangedType) {
+        const geometryType = data.features[i].geometry.type.toString().toLowerCase();
+        if (geometryType === 'point') {
+          if (!_.isUndefined(this.getUiMapOption().layers[this.getUiMapOption().layerNum]['clustering']) && this.getUiMapOption().layers[this.getUiMapOption().layerNum]['clustering']) {
+            this.getUiMapOption().layers[this.getUiMapOption().layerNum].type = MapLayerType.CLUSTER;
+          } else {
+            this.getUiMapOption().layers[this.getUiMapOption().layerNum].type = MapLayerType.SYMBOL;
+          }
+        } else if (geometryType === 'multipolygon') {
+          this.getUiMapOption().layers[this.getUiMapOption().layerNum].type = MapLayerType.POLYGON;
+        } else {
+          this.getUiMapOption().layers[this.getUiMapOption().layerNum].type = geometryType;
+        }
+        isChangedType = true;
+      }
+
+      // geo type
+      if (data.features[i].geometry.type.toString().toLowerCase().indexOf('point') !== -1) {
+        // point
+        const pointFeature = (new ol.format.GeoJSON()).readFeature(data.features[i]);
+        pointFeature.set('layerNum', this.getUiMapOption().layerNum);
+        pointFeature.set('isClustering', this.getUiMapOption().layers[this.getUiMapOption().layerNum]['clustering']);
+        features[i] = pointFeature;
+        source.addFeature(features[i]);
+      } else if (data.features[i].geometry.type.toString().toLowerCase().indexOf('polygon') !== -1 || data.features[i].geometry.type.toString().toLowerCase().indexOf('multipolygon') !== -1) {
+        const polygonFeature = (new ol.format.GeoJSON()).readFeature(data.features[i]);
+        polygonFeature.set('layerNum', this.getUiMapOption().layerNum);
+        features[i] = polygonFeature;
+        source.addFeature(features[i]);
+      } else if (data != null && data.features[i] != null && data.features[i].geometry != null && data.features[i].geometry.type.toString().toLowerCase().indexOf('line') !== -1) {
+        let line;
+        if (data.features[i].geometry.type.toString().toLowerCase().indexOf('multi') !== -1) {
+          line = new ol.geom.MultiLineString(data.features[i].geometry.coordinates);
+        } else {
+          line = new ol.geom.LineString(data.features[i].geometry.coordinates);
+        }
+        const lineFeature = new ol.Feature({geometry: line});
+        if (!_.isNull(this.getUiMapOption().layers[this.getUiMapOption().layerNum].color.column)) {
+          const alias = ChartUtil.getFieldAlias(this.getUiMapOption().layers[this.getUiMapOption().layerNum].color.column, this.shelf.layers[this.getUiMapOption().layerNum].fields, this.getUiMapOption().layers[this.getUiMapOption().layerNum].color.aggregationType);
+          lineFeature.set(alias, data.features[i].properties[alias]);
+        }
+        lineFeature.set('layerNum', this.getUiMapOption().layerNum);
+        features.push(lineFeature);
+        source.addFeature(lineFeature);
+      }
+    } // end - features for
+  }
+
+  /**
+   * analysis Layer
+   */
+  private createAnalysisLayer(source: any, isMapCreation: boolean, dataIndex: number): void {
+    ////////////////////////////////////////////////////////
+    // Create layer
+    ////////////////////////////////////////////////////////
+    // Layer
+    const layer: UILayers = this.getUiMapOption().layers[this.getUiMapOption().layerNum];
+
+    if ((_.eq(layer.type, MapLayerType.SYMBOL)) || (_.eq(layer.type, MapLayerType.CLUSTER))) {
+      //////////////////////////
+      // Point layer
+      //////////////////////////
+      // Create
+      const symbolLayer = new ol.layer.Vector({
+        source: source,
+        style: this.pointStyleFunction(this.getUiMapOption().layerNum, this.data, null, dataIndex)
+      });
+      symbolLayer.setZIndex(4);
+      this.layerMap.push({id: this.getUiMapOption().layerNum, layerValue: symbolLayer});
+      // Init
+      if (isMapCreation && this.getUiMapOption().showMapLayer) {
+        // Add layer
+        this.olmap.addLayer(symbolLayer);
+      } else {
+        if (this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(symbolLayer);
+          // Set style
+          symbolLayer.setStyle(this.pointStyleFunction(this.getUiMapOption().layerNum, this.data, null, dataIndex));
+        } else {
+          // Remove layer
+          this.olmap.removeLayer(symbolLayer);
+        }
+      }
+    } else if (_.eq(layer.type, MapLayerType.LINE) || _.eq(layer.type, MapLayerType.MULTILINESTRING) || _.eq(layer.type, MapLayerType.POLYGON) || _.eq(layer.type, MapLayerType.MULTIPOLYGON)) {
+      ////////////////////////////////////////////////////////
+      // Line, Polygon layer
+      ////////////////////////////////////////////////////////
+      // Create
+      const symbolLayer = new ol.layer.Vector({
+        source: source,
+        style: this.mapStyleFunction(this.getUiMapOption().layerNum, this.data, null, dataIndex)
+      });
+      symbolLayer.setZIndex(3);
+      this.layerMap.push({id: this.getUiMapOption().layerNum, layerValue: symbolLayer});
+      // Init
+      if (isMapCreation && this.getUiMapOption().showMapLayer) {
+        // Add layer
+        this.olmap.addLayer(symbolLayer);
+      } else {
+        if (this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(symbolLayer);
+        } else {
+          // Remove layer
+          this.olmap.removeLayer(symbolLayer);
+        }
+      }
+    } else if (_.eq(layer.type, MapLayerType.HEATMAP)) {
+      ////////////////////////////////////////////////////////
+      // Heatmap layer
+      ////////////////////////////////////////////////////////
+      const getHeatMapLayerValue: UIHeatmapLayer = layer as UIHeatmapLayer;
+      // Create
+      const heatmapLayer = new ol.layer.Heatmap({
+        source: source,
+        // Style
+        gradient: HeatmapColorList[getHeatMapLayerValue.color.schema],
+        opacity: 1 - (getHeatMapLayerValue.color.transparency * 0.01),
+        radius: getHeatMapLayerValue.radius,
+        blur: getHeatMapLayerValue.blur * 0.7
+      });
+      heatmapLayer.setZIndex(0);
+      this.layerMap.push({id: this.getUiMapOption().layerNum, layerValue: heatmapLayer});
+      // Init
+      if (isMapCreation && this.getUiMapOption().showMapLayer) {
+        // Add layer
+        this.olmap.addLayer(heatmapLayer);
+      } else {
+        if (this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(heatmapLayer);
+          // Set style
+          if (isUndefined(HeatmapColorList[getHeatMapLayerValue.color.schema])) {
+            heatmapLayer.setGradient(HeatmapColorList['HC1']);
+          } else {
+            heatmapLayer.setGradient(HeatmapColorList[getHeatMapLayerValue.color.schema]);
+          }
+          heatmapLayer.setOpacity(1 - (getHeatMapLayerValue.color.transparency * 0.01));
+          heatmapLayer.setRadius(getHeatMapLayerValue.radius);
+          heatmapLayer.setBlur(getHeatMapLayerValue.blur * 0.7);
+        } else {
+          // Remove layer
+          this.olmap.removeLayer(heatmapLayer);
+        }
+      }
+    } else if (_.eq(layer.type, MapLayerType.TILE)) {
+      ////////////////////////////////////////////////////////
+      // Hexgon layer
+      ////////////////////////////////////////////////////////
+      // Create
+      const hexagonLayer = new ol.layer.Vector({
+        source: source,
+        style: this.hexagonStyleFunction(this.getUiMapOption().layerNum, this.data, null, dataIndex)
+      });
+      hexagonLayer.setZIndex(1);
+      this.layerMap.push({id: this.getUiMapOption().layerNum, layerValue: hexagonLayer});
+      // Init
+      if (isMapCreation && this.getUiMapOption().showMapLayer) {
+        // Add layer
+        this.olmap.addLayer(hexagonLayer);
+      } else {
+        if (this.getUiMapOption().showMapLayer) {
+          // Add layer
+          this.olmap.addLayer(hexagonLayer);
+        } else {
+          // Remove layer
+          this.olmap.removeLayer(hexagonLayer);
+        }
+      }
+    }
+    this.safelyDetectChanges();
+
+    // Map data place fit
+    if (
+      !this._isChangedZoom &&
+      this.drawByType === EventType.CHANGE_PIVOT && 'Infinity'.indexOf(source.getExtent()[0]) === -1 &&
+      (_.isUndefined(this.uiOption['layers'][this.getUiMapOption().layerNum]['changeCoverage']) || this.uiOption['layers'][this.getUiMapOption().layerNum]['changeCoverage'])) {
+      this.olmap.getView().fit(source.getExtent());
+    } else {
+      // set saved data zoom
+      if (this.uiOption.chartZooms && this.uiOption.chartZooms.length > 0) {
+        this.olmap.getView().setCenter([this.uiOption.chartZooms[0].startValue, this.uiOption.chartZooms[0].endValue]);
+        this.olmap.getView().setZoom(this.uiOption.chartZooms[0].count);
+      }
+    }
+
+  }
+
+
+  private includeCompareLayer(dataIndex, isMapCreation) {
+    // Source
+    const source = new ol.source.Vector({crossOrigin: 'anonymous'});
+
+    const data = this.data[dataIndex];
+
+    const features = [];
+
+    for (let i = 0; i < data.features.length; i++) {
+      // polygon
+      const polygonFeature = (new ol.format.GeoJSON()).readFeature(data.features[i]);
+      polygonFeature.set('layerNum', -5);
+      features[i] = polygonFeature;
+      source.addFeature(features[i]);
+    } // end - features for
+
+    const style = new ol.style.Style({
+      stroke: new ol.style.Stroke({
+        color: 2,
+        lineDash: [3, 3]
+      }),
+      fill: new ol.style.Fill({
+        color: 'rgba(255,0,255,0.1)'
+      })
+    });
+
+    // Create
+    const symbolLayer = new ol.layer.Vector({
+      source: source,
+      style: style
+    });
+    symbolLayer.setZIndex(3);
+    this.layerMap.push({id: this.getUiMapOption().layerNum, layerValue: symbolLayer});
+    // Init
+    if (isMapCreation && this.getUiMapOption().showMapLayer) {
+      // Add layer
+      this.olmap.addLayer(symbolLayer);
+    } else {
+      if (this.getUiMapOption().showMapLayer) {
+        // Add layer
+        this.olmap.addLayer(symbolLayer);
+      } else {
+        // Remove layer
+        this.olmap.removeLayer(symbolLayer);
+      }
+    }
+  }
+
+  /**
+   * 크기 반경 변경
+   */
+  public changePointSize() {
+    let uiLayerIndex = 0;
+    for (let uiOptionForLoopLayerIndex = 0; this.getUiMapOption().layers.length > uiOptionForLoopLayerIndex; uiOptionForLoopLayerIndex++) {
+      if (this.getUiMapOption().layers[uiOptionForLoopLayerIndex]['isChangePointRadius'] === true) {
+        uiLayerIndex = uiOptionForLoopLayerIndex;
+        delete this.uiOption['layers'][uiOptionForLoopLayerIndex]['isChangePointRadius'];
+      }
+    }
+    // 공간연산 사용 여부 체크
+    if (!_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true) {
+      uiLayerIndex = this.getUiMapOption().analysis.layerNum;
+    }
+    for (let olmapForLoopLayerIndex = 0; this.olmap.getLayers().getArray().length > olmapForLoopLayerIndex; olmapForLoopLayerIndex++) {
+      if (this.layerMap[uiLayerIndex].layerValue === this.olmap.getLayers().getArray()[olmapForLoopLayerIndex]) {
+        this.olmap.getLayers().getArray()[olmapForLoopLayerIndex].getSource().getFeatures().forEach(feature => {
+          // 공간연산 사용 여부 체크
+          if (!_.isUndefined(this.getUiMapOption().analysis) && this.getUiMapOption().analysis['use'] === true) {
+            feature.setStyle(this.pointStyleFunction(this.getUiMapOption().layerNum, this.data, null, this.getUiMapOption().analysis['layerNum']));
+          } else {
+            feature.setStyle(this.pointStyleFunction(uiLayerIndex, this.data));
+          }
+        });
+        this.layerMap[uiLayerIndex].layerValue = this.olmap.getLayers().getArray()[olmapForLoopLayerIndex];
+      }
+    }
+    this.safelyDetectChanges();
+  }
+}

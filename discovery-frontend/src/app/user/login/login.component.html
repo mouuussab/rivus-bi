@@ -1,0 +1,103 @@
+
+<!--
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<div class="ddp-wrap-login metatron-login">
+  <!--<em class="ddp-bg-login"></em>-->
+  <!-- login -->
+  <div class="ddp-ui-login">
+    <div class="ddp-box-login">
+      <div class="ddp-ui-logo">
+        <login-logo></login-logo>
+      </div>
+
+      <!-- login form -->
+      <div class="ddp-form-login">
+        <!-- ID 입력 -->
+        <div class="ddp-form-input ddp-ui-input-form" [ngClass]="{'ddp-type-error': loginFailMsg}" style="padding-bottom:0px;">
+          <label class="ddp-label-type">{{'msg.comm.usr.name.title' | translate}}</label>
+          <div class="ddp-input-check">
+            <span class="ddp-input-type">
+              <input type="text" id = 'loginId' [(ngModel)]="user.username" placeholder="{{'msg.comm.usr.name.title.ph' | translate}}"
+                     (focus)="loginFailMsg='';" style="border-bottom:none;"/>
+            </span>
+            <em class="ddp-icon-error" (click)="user.username='';loginFailMsg='';" *ngIf="loginFailMsg"></em>
+          </div>
+        </div>
+        <!-- // ID 입력 -->
+
+        <!-- Password 입력 -->
+        <div class="ddp-form-input ddp-ui-input-form" [ngClass]="{'ddp-type-error': loginFailMsg}" style="padding-bottom:0px;">
+          <label class="ddp-label-type">{{'msg.comm.usr.pw.title' | translate}}</label>
+          <div class="ddp-input-check">
+            <span class="ddp-input-type">
+              <input #pwElm id = 'loginPwd' type="password" placeholder="{{'msg.comm.usr.pw.title.ph' | translate}}"
+                     [(ngModel)]="user.password" (keyup)="$event.keyCode == 13 ? checkIp() : null;"
+                     (focus)="loginFailMsg='';" style="border-bottom:none;" />
+            </span>
+            <em class="ddp-icon-error" (click)="user.password='';loginFailMsg='';" *ngIf="loginFailMsg"></em>
+          </div>
+          <!-- error 메시지 -->
+          <span class="ddp-ui-error" style="bottom:-45px;" *ngIf="loginFailMsg">{{ loginFailMsg }}</span>
+          <!-- //error 메시지 -->
+        </div>
+        <!-- // Password 입력 -->
+
+        <!-- option -->
+        <div class="ddp-ui-login-option" style="margin-top: 55px;">
+          <div class="ddp-wrap-input-checkbox">
+            <input type="checkbox" id="ID_REMEMBER" [(ngModel)]="isRemember"/>
+            <i></i>
+            <label class="ddp-txt-option" for="ID_REMEMBER">{{'msg.comm.usr.login.remember.id' | translate}}</label>
+          </div>
+        </div>
+        <!--// option -->
+
+        <!-- button -->
+        <div class="ddp-ui-login-buttons">
+          <a href="javascript:" class="ddp-btn" (click)="checkIp()">{{'msg.comm.usr.login' | translate}}</a>
+        </div>
+        <!-- //button -->
+
+        <div class="ddp-help">
+          <a href="javascript:" class="ddp-link-search" (click)="resetPassword()">{{'msg.comm.usr.login.find.passwd' | translate}}</a>
+          <a href="javascript:" class="ddp-link-sign" (click)="join()">{{'msg.comm.usr.login.join' | translate}}</a>
+        </div>
+
+      </div>
+      <!-- //login form -->
+    </div>
+
+
+
+  </div>
+  <!-- //login -->
+
+</div>
+
+<app-join (joinComplete)="joinComplete($event)"></app-join>
+<!-- 확인 팝업창 -->
+<app-confirm-small-modal [useCloseBtn]="false" [useCancelBtn]="useCancelBtn" (confirm)="confirmComplete($event)"></app-confirm-small-modal>
+<!-- //확인 팝업창 -->
+<!-- 비밀번호 변경 -->
+<app-reset-password></app-reset-password>
+<!-- //비밀번호 변경 -->
+<!-- popup wrap -->
+<app-eng-policy *ngIf="isShowTerms && translateService.getBrowserLang() == 'en'" (closeEvent)="isShowTerms=false"></app-eng-policy>
+<app-kor-policy *ngIf="isShowTerms && translateService.getBrowserLang() == 'ko'" (closeEvent)="isShowTerms=false"></app-kor-policy>
+<!-- //popup wrap -->
+
+<!-- 초기 비밀번호 변경 -->
+<app-initial-change-password (closeInitPw)="initialComplete()"></app-initial-change-password>
+<!-- 초기 비밀번호 변경 -->

@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog dbchangelog-3.8.xsd">
+    <changeSet author="sohncw (generated)" id="1572393007722-1">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="favorite"/>
+            </not>
+        </preConditions>
+        <createTable tableName="favorite">
+            <column name="id" type="VARCHAR(255)">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="created_by" type="VARCHAR(255)"/>
+            <column name="created_time" type="datetime"/>
+            <column name="modified_by" type="VARCHAR(255)"/>
+            <column name="modified_time" type="datetime"/>
+            <column name="version" type="BIGINT"/>
+            <column name="favorite_domain" type="VARCHAR(255)"/>
+            <column name="favorite_target" type="VARCHAR(255)"/>
+        </createTable>
+    </changeSet>
+    <changeSet author="sohncw (generated)" id="1572393007722-2">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="pr_dataset" columnName="quote_char" />
+            </not>
+        </preConditions>
+        <addColumn tableName="pr_dataset">
+            <column name="quote_char" type="${varchar.type}(255)" />
+        </addColumn>
+    </changeSet>
+    <changeSet author="sohncw" id="1574830584206-0">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <sequenceExists sequenceName="hibernate_sequence"/>
+            </not>
+        </preConditions>
+        <createSequence sequenceName="hibernate_sequence" cycle="false" incrementBy="1" ordered="true" startValue="0"/>
+    </changeSet>
+    <changeSet author="sohncw" id="1574830584206-1">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="hibernate_sequence" />
+                <tableIsEmpty tableName="hibernate_sequence" />
+            </and>
+        </preConditions>
+        <insert tableName="hibernate_sequence">
+            <column name="next_val" value="1" />
+        </insert>
+    </changeSet>
+    <changeSet author="minhyun2" id="1587338284530-0">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="oauth_client_details" />
+                <tableIsEmpty tableName="oauth_client_details" />
+            </and>
+        </preConditions>
+        <insert tableName="oauth_client_details">
+            <column name="client_id" value="polaris_client" />
+            <column name="client_secret" value="polaris" />
+            <column name="authorized_grant_types" value="authorization_code,implicit,password,refresh_token,client_credentials" />
+            <column name="authorities" value="ROLE_CLIENT" />
+            <column name="scope" value="read,write" />
+        </insert>
+        <insert tableName="oauth_client_details">
+            <column name="client_id" value="polaris_trusted" />
+            <column name="client_secret" value="secret" />
+            <column name="authorized_grant_types" value="client_credentials,implicit,password,authorization_code,refresh_token" />
+            <column name="authorities" value="ROLE_TRUSTED_CLIENT" />
+            <column name="scope" value="read,write,trust" />
+        </insert>
+    </changeSet>
+
+    <changeSet author="sohncw" id="1587645092123-0">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="activity_stream" />
+                <not>
+                    <columnExists tableName="activity_stream" columnName="activity_result" />
+                </not>
+            </and>
+        </preConditions>
+        <addColumn tableName="activity_stream">
+            <column name="activity_result" type="${varchar.type}(255)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet author="sohncw" id="1587645092123-1">
+        <preConditions onFail="MARK_RAN">
+            <and>
+                <tableExists tableName="activity_stream" />
+                <not>
+                    <columnExists tableName="activity_stream" columnName="activity_remote_host" />
+                </not>
+            </and>
+        </preConditions>
+        <addColumn tableName="activity_stream">
+            <column name="activity_remote_host" type="${varchar.type}(255)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet author="initial (generated)" id="1587645092123-2">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="role_directory_AUD" />
+            </not>
+        </preConditions>
+        <createTable tableName="role_directory_AUD">
+            <column name="id" type="${bigint.type}">
+                <constraints nullable="false" />
+            </column>
+            <column name="REV" type="${bigint.type}">
+                <constraints nullable="false" />
+            </column>
+            <column name="REVTYPE" type="${tinyint.type}" />
+            <column name="created_time" type="datetime" />
+            <column name="directory_id" type="${varchar.type}(255)" />
+            <column name="directory_name" type="${varchar.type}(255)" />
+            <column name="directory_type" type="${varchar.type}(255)" />
+            <column name="role_id" type="${varchar.type}(255)" />
+            <column name="createdTime_MOD" type="${boolean.type}" />
+            <column name="directoryId_MOD" type="${boolean.type}" />
+            <column name="directoryName_MOD" type="${boolean.type}" />
+            <column name="type_MOD" type="${boolean.type}" />
+            <column name="role_MOD" type="${boolean.type}" />
+        </createTable>
+    </changeSet>
+
+    <changeSet author="sohncw (generated)" id="1587645092123-3">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="user_group_AUD" />
+            </not>
+        </preConditions>
+        <createTable tableName="user_group_AUD">
+            <column name="id" type="${varchar.type}(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="REV" type="${bigint.type}">
+                <constraints nullable="false" />
+            </column>
+            <column name="REVTYPE" type="${tinyint.type}" />
+            <column name="group_contexts" type="${varchar.type}(10000)" />
+            <column name="contexts_MOD" type="${boolean.type}" />
+            <column name="group_default" type="${boolean.type}" />
+            <column name="defaultGroup_MOD" type="${boolean.type}" />
+            <column name="group_desc" type="${varchar.type}(1000)" />
+            <column name="description_MOD" type="${boolean.type}" />
+            <column name="group_member_count" type="INT" />
+            <column name="memberCount_MOD" type="${boolean.type}" />
+            <column name="group_name" type="${varchar.type}(255)" />
+            <column name="name_MOD" type="${boolean.type}" />
+            <column name="group_predefined" type="${boolean.type}" />
+            <column name="predefined_MOD" type="${boolean.type}" />
+            <column name="group_read_only" type="${boolean.type}" />
+            <column name="readOnly_MOD" type="${boolean.type}" />
+            <column name="members_MOD" type="${boolean.type}" />
+        </createTable>
+    </changeSet>
+
+    <changeSet author="sohncw (generated)" id="1587645092123-4">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="user_group_member_AUD" />
+            </not>
+        </preConditions>
+        <createTable tableName="user_group_member_AUD">
+            <column name="id" type="${bigint.type}">
+                <constraints nullable="false" />
+            </column>
+            <column name="REV" type="${bigint.type}">
+                <constraints nullable="false" />
+            </column>
+            <column name="REVTYPE" type="${tinyint.type}" />
+            <column name="member_id" type="${varchar.type}(255)" />
+            <column name="member_name" type="${varchar.type}(255)" />
+            <column name="profile" type="TINYBLOB" />
+            <column name="group_id" type="${varchar.type}(255)" />
+            <column name="memberId_MOD" type="${boolean.type}" />
+            <column name="memberName_MOD" type="${boolean.type}" />
+            <column name="profile_MOD" type="${boolean.type}" />
+            <column name="group_MOD" type="${boolean.type}" />
+        </createTable>
+    </changeSet>
+
+    <changeSet author="sohncw (generated)" id="1587645092123-5">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="users_AUD" />
+            </not>
+        </preConditions>
+        <createTable tableName="users_AUD">
+            <column name="id" type="${varchar.type}(255)">
+                <constraints nullable="false" />
+            </column>
+            <column name="REV" type="${bigint.type}">
+                <constraints nullable="false" />
+            </column>
+            <column name="REVTYPE" type="${tinyint.type}" />
+            <column name="user_email" type="${varchar.type}(255)" />
+            <column name="email_MOD" type="${boolean.type}" />
+            <column name="user_full_name" type="${varchar.type}(255)" />
+            <column name="fullName_MOD" type="${boolean.type}" />
+            <column name="user_image_Url" type="${varchar.type}(255)" />
+            <column name="imageUrl_MOD" type="${boolean.type}" />
+            <column name="user_password" type="${varchar.type}(200)" />
+            <column name="password_MOD" type="${boolean.type}" />
+            <column name="user_status" type="${varchar.type}(255)" />
+            <column name="status_MOD" type="${boolean.type}" />
+            <column name="user_status_msg" type="${varchar.type}(3000)" />
+            <column name="statusMessage_MOD" type="${boolean.type}"/>
+            <column name="user_tel" type="${varchar.type}(255)"/>
+            <column name="tel_MOD" type="${boolean.type}"/>
+            <column name="user_origin" type="${varchar.type}(255)"/>
+            <column name="userOrigin_MOD" type="${boolean.type}"/>
+            <column name="user_name" type="${varchar.type}(50)"/>
+            <column name="username_MOD" type="${boolean.type}"/>
+        </createTable>
+    </changeSet>
+  
+    <changeSet author="minhyun2 (generated)" id="1590968388389-0">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="users" columnName="user_fail_cnt" />
+            </not>
+        </preConditions>
+        <addColumn tableName="users">
+            <column name="user_fail_cnt" type="${int.type}" />
+        </addColumn>
+    </changeSet>
+
+    <changeSet author="minhyun2 (generated)" id="1590968388389-1">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="users_AUD" columnName="failCnt_MOD" />
+            </not>
+        </preConditions>
+        <addColumn tableName="users_AUD">
+            <column name="user_fail_cnt" type="${int.type}" />
+            <column name="failCnt_MOD" type="${boolean.type}" />
+        </addColumn>
+    </changeSet>
+  
+    <!-- for organization -->
+    <changeSet author="kyungtaak" id="1590968388390-0">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="user_org"/>
+            </not>
+        </preConditions>
+        <createTable tableName="user_org">
+            <column name="id" type="${varchar.type}(255)">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="created_by" type="${varchar.type}(255)"/>
+            <column name="created_time" type="${datetime.type}"/>
+            <column name="modified_by" type="${varchar.type}(255)"/>
+            <column name="modified_time" type="${datetime.type}"/>
+            <column name="version" type="${bigint.type}"/>
+            <column name="org_name" type="${varchar.type}(150)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="org_desc" type="${varchar.type}(900)"/>
+            <column name="org_code" type="${varchar.type}(20)"/>
+            <column name="org_user_count" type="${int.type}"/>
+            <column name="org_group_count" type="${int.type}"/>
+        </createTable>
+        <createIndex indexName="i_user_org_code" tableName="user_org">
+            <column name="org_code"/>
+        </createIndex>
+        <insert tableName="user_org">
+            <column name="id" value="ID_ORG_DEFAULT"/>
+            <column name="created_by" value="admin"/>
+            <column name="created_time" valueDate="${now}"/>
+            <column name="modified_by" value="admin"/>
+            <column name="modified_time" valueDate="${now}"/>
+            <column name="version" value="0"/>
+            <column name="org_desc" value=""/>
+            <column name="org_name" value="DEFAULT_ORG"/>
+            <column name="org_code" value="DEFAULT_ORG"/>
+            <column name="org_user_count" value="0"/>
+            <column name="org_group_count" value="0"/>
+        </insert>
+    </changeSet>
+    <changeSet author="kyungtaak" id="1590968388390-1">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <tableExists tableName="user_org_member"/>
+            </not>
+        </preConditions>
+        <createTable tableName="user_org_member">
+            <column autoIncrement="true" name="id" type="${bigint.type}">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="member_id" type="${varchar.type}(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="member_name" type="${varchar.type}(255)"/>
+            <column name="member_type" type="${varchar.type}(10)"/>
+            <column name="org_id" type="${varchar.type}(255)"/>
+        </createTable>
+        <addForeignKeyConstraint baseColumnNames="org_id" baseTableName="user_org_member"
+          constraintName="FK_USER_ORG_MEMBER_ORG_ID" deferrable="false" initiallyDeferred="false" onDelete="RESTRICT"
+          onUpdate="RESTRICT" referencedColumnNames="id" referencedTableName="user_org" validate="true"/>
+        <createIndex indexName="i_org_member_id" tableName="user_org_member">
+            <column name="member_id"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet author="sohncw" id="1600259363727-0">
+        <modifyDataType tableName="dashboard_widget" columnName="widget_conf" newDataType="${mediumtext.type}" />
+    </changeSet>
+
+    <changeSet author="minhyun2" id="1605842682963-0">
+        <modifyDataType tableName="datasource_query" columnName="query_message" newDataType="${mediumtext.type}" />
+    </changeSet>
+</databaseChangeLog>

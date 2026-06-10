@@ -1,0 +1,284 @@
+<!--
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~      http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<div class="ddp-wrap-popup" *ngIf="isShow">
+  <em class="ddp-bg-popup"></em>
+  <div class="ddp-ui-popup-in">
+    <!-- popup -->
+    <div class="ddp-ui-popup ddp-box-user-popup" style="position:fixed; overflow: scroll; height:650px">
+      <a href="javascript:" class="ddp-btn-close" (click)="close()"></a>
+      <span class="ddp-ui-pop-title">{{'msg.login.join.title' | translate}}</span>
+
+      <!-- contents -->
+      <div class="ddp-ui-user-contet">
+        <!-- User Name 입력 -->
+        <div [ngClass]="{'ddp-type-ok': '' !== user.username && joinValidation.username, 'ddp-type-error': false === joinValidation.username}"
+             class="ddp-ui-input-form" >
+          <label class="ddp-label-type">{{'msg.login.join.name' | translate}} </label>
+          <div class="ddp-input-check">
+            <input type="text" class="ddp-input-type" placeholder="{{'msg.login.join.name.ph' | translate}}"  (keydown)="joinValidation.usernameMessage? hideError('username') :null" [(ngModel)]="user.username" (blur)="validation('username')">
+            <em class="ddp-icon-ok" *ngIf="joinValidation.username"></em>
+            <em class="ddp-icon-error" *ngIf="joinValidation.username == false" (click)="user.username = ''; joinValidation.username = undefined;"></em>
+          </div>
+          <!-- error 메시지 -->
+          <span class="ddp-ui-error" *ngIf="joinValidation.username == false">
+            {{ joinValidation.usernameMessage }}
+          </span>
+          <!-- //error 메시지 -->
+        </div>
+        <!-- // User Name 입력 -->
+
+        <!-- Full Name 입력 -->
+        <div class="ddp-ui-input-form">
+          <label class="ddp-label-type">{{'msg.login.join.fullname' | translate}}
+            <!-- tooltip -->
+            <div class="ddp-ui-tooltip">
+              <em class="ddp-icon-question"></em>
+              <div class="ddp-ui-tooltip-info">
+                <em class="ddp-icon-view-left"></em>
+                {{'msg.login.join.name.description' | translate}}
+              </div>
+            </div>
+            <!-- //tooltip -->
+          </label>
+          <div class="ddp-input-check">
+            <input type="text" class="ddp-input-type" placeholder="{{'msg.login.join.fullname.ph' | translate}}" [(ngModel)]="user.fullName" (blur)="validation('fullName')" maxlength="50">
+            <!--<em class="ddp-icon-ok" ></em>-->
+            <!--<em class="ddp-icon-error"></em>-->
+          </div>
+          <!-- error 메시지 -->
+          <!-- //error 메시지 -->
+        </div>
+        <!-- // Full Name 입력 -->
+
+        <!-- E-Mail 입력 -->
+        <div [ngClass]="{'ddp-type-ok': '' !== user.email && joinValidation.email, 'ddp-type-error': false === joinValidation.email }"
+             class="ddp-ui-input-form" >
+          <label class="ddp-label-type">{{'msg.login.join.email' | translate}}
+            <!-- tooltip -->
+            <div class="ddp-ui-tooltip">
+              <em class="ddp-icon-question"></em>
+              <div class="ddp-ui-tooltip-info">
+                <em class="ddp-icon-view-left"></em>
+                {{'msg.login.join.email.description' | translate}}
+              </div>
+            </div>
+            <!-- //tooltip -->
+
+          </label>
+          <div class="ddp-input-check">
+            <input type="text" class="ddp-input-type" placeholder="{{'msg.login.join.email.ph' | translate}}" (keydown)="joinValidation.emailMessage? hideError('email') :null" [(ngModel)]="user.email" (blur)="validation('email')">
+            <em class="ddp-icon-ok" *ngIf="joinValidation.email"></em>
+            <em class="ddp-icon-error" *ngIf="joinValidation.email == false" (click)="user.email = '';joinValidation.email = undefined;"></em>
+          </div>
+          <!-- error 메시지 -->
+          <span class="ddp-ui-error" *ngIf="joinValidation.email == false">
+              <em class="ddp-icon-error"></em>{{ joinValidation.emailMessage }}
+          </span>
+          <!-- //error 메시지 -->
+        </div>
+        <!-- // E-Mail 입력 -->
+
+        <!-- Password 입력 -->
+        <div class="ddp-wrap-overflow ddp-clear">
+          <div class="ddp-ui-fleft ">
+            <!-- error 일때 ddp-type-error 추가 -->
+            <div [ngClass]="{'ddp-type-ok': '' !== user.password && joinValidation.password, 'ddp-type-error': false === joinValidation.password }"
+                 class="ddp-ui-input-form" >
+              <label class="ddp-label-type">{{'msg.login.join.passwd' | translate}}
+                <!-- tooltip -->
+                <div class="ddp-ui-tooltip">
+                  <em class="ddp-icon-question"></em>
+                  <div class="ddp-ui-tooltip-info">
+                    <em class="ddp-icon-view-left"></em>
+                    {{'msg.login.join.passwd.description' | translate}}
+                  </div>
+                </div>
+                <!-- //tooltip -->
+              </label>
+
+              <div class="ddp-input-check">
+                <input type="password" class="ddp-input-type" placeholder="{{'msg.login.join.passwd.ph' | translate}}" [(ngModel)]="user.password" (keydown)="joinValidation.passwordMessage? hideError('password') :null" (blur)="validation('password')">
+                <em class="ddp-icon-ok" *ngIf="joinValidation.password"></em>
+                <em class="ddp-icon-error" *ngIf="joinValidation.password == false" (click)="user.password = ''; joinValidation.password = undefined;"></em>
+              </div>
+              <!-- error 메시지 -->
+              <span class="ddp-ui-error" *ngIf="joinValidation.password == false">
+                  <em class="ddp-icon-error"></em>{{ joinValidation.passwordMessage }}
+              </span>
+              <!-- //error 메시지 -->
+            </div>
+
+          </div>
+          <div class="ddp-ui-fright">
+            <!-- error 일때 ddp-type-error 추가 -->
+            <div [ngClass]="{'ddp-type-ok': '' !== user.confirmPassword && joinValidation.confirmPassword, 'ddp-type-error': false === joinValidation.confirmPassword }"
+                 class="ddp-ui-input-form" >
+              <label class="ddp-label-type">{{'msg.login.join.confirm-passwd' | translate}} </label>
+
+              <div class="ddp-input-check">
+                <input type="password" class="ddp-input-type" placeholder="{{'msg.login.join.confirm-passwd.ph' | translate}}" (keydown)="joinValidation.confirmPasswordMessage? hideError('confirmPassword') :null" [(ngModel)]="user.confirmPassword" (blur)="validation('confirmPassword')">
+                <em class="ddp-icon-ok" *ngIf="joinValidation.confirmPassword"></em>
+                <em class="ddp-icon-error" *ngIf="joinValidation.confirmPassword == false" (click)="user.confirmPassword = ''; joinValidation.confirmPassword = undefined;"></em>
+              </div>
+              <!-- error 메시지 -->
+              <span class="ddp-ui-error" *ngIf="joinValidation.confirmPassword == false">
+                  <em class="ddp-icon-error"></em>{{ joinValidation.confirmPasswordMessage }}
+              </span>
+              <!-- //error 메시지 -->
+            </div>
+
+          </div>
+        </div>
+        <!-- // Password 입력 -->
+
+        <!-- 조직 입력 -->
+        <div [ngClass]="{'ddp-type-ok': '' !== inputOrgCode && joinValidation.org, 'ddp-type-error': false ===
+        joinValidation.org }" class="ddp-ui-input-form" >
+          <label class="ddp-label-type">{{'msg.login.join.org' | translate}}
+            <!-- tooltip -->
+            <div class="ddp-ui-tooltip">
+              <em class="ddp-icon-question"></em>
+              <div class="ddp-ui-tooltip-info">
+                <em class="ddp-icon-view-left"></em>
+                {{'msg.login.join.org.description' | translate}}
+              </div>
+            </div>
+            <!-- //tooltip -->
+
+          </label>
+          <div class="ddp-input-check">
+            <input [(ngModel)]="inputOrgCode"
+                   (keydown)="joinValidation.orgMessage? hideError('org') :null" (blur)="validation('org')"
+                   type="text" class="ddp-input-type" placeholder="{{'msg.login.join.org.ph' | translate}}" >
+            <em class="ddp-icon-ok" *ngIf="joinValidation.org"></em>
+            <em *ngIf="joinValidation.org == false"
+                (click)="inputOrgCode = '';joinValidation.org = undefined;" class="ddp-icon-error" ></em>
+          </div>
+          <!-- error 메시지 -->
+          <span class="ddp-ui-error" *ngIf="joinValidation.org == false">
+              <em class="ddp-icon-error"></em>{{ joinValidation.orgMessage }}
+          </span>
+          <!-- //error 메시지 -->
+        </div>
+        <!-- // 조직 입력 -->
+
+        <!-- 약관 동의 -->
+<!--        <div class="ddp-ui-input-form" >-->
+<!--          <label class="ddp-label-type">[개인정보 수집 및 이용에 대한 동의 (필수동의)]-->
+<!--          </label>-->
+<!--          <div class="ddp-input-check" style="padding-right: 0 !important;">-->
+<!--           <table class="privacy-terms-table">-->
+<!--             <tr>-->
+<!--               <td class="privacy-terms-content" colspan="3">-->
+<!--                 <span>Metatron Grandview 서비스와 관련하여, 개인정보를 귀사(sk텔리콤 주식회사)가 수집 및 이용하는 것에 대해 동의합니다.</span>-->
+<!--                 <br/><br/>-->
+<!--                 <span>* Metatron Grandview 서비스와 관련하여, 개인정보를 귀사(sk텔리콤 주식회사)가 수집 및 이용하는 것에 대해 동의합니다.</span>-->
+<!--               </td>-->
+<!--             </tr>-->
+<!--             <tr class="privacy-terms-content2" style="font-weight: bold">-->
+<!--               <td>수집,이용 목적</td>-->
+<!--               <td>수집항목</td>-->
+<!--               <td>보유 및 이용기간</td>-->
+<!--             </tr>-->
+<!--             <tr class="privacy-terms-content2">-->
+<!--               <td>서비스 권한 부여 및 이용</td>-->
+<!--               <td>사용자성명, 이메일, 아이디, 비밀번호</td>-->
+<!--               <td>서비스 사용기간</td>-->
+<!--             </tr>-->
+<!--             <tr>-->
+<!--               <td class="privacy-terms-content" colspan="3">-->
+<!--                 <span># 본 동의는 서비스의 본질적 기능 제공을 위한 개인정보 수집/이용에 대한 동의로서, 동의하지 않으실 경우 서비스 제공이 불가능합니다.</span>-->
+<!--                 <br/><br/>-->
+<!--                 <span># 본 동의는 서비스의 본질적 기능 제공을 위한 개인정보 수집/이용에 대한 동의로서, 동의하지 않으실 경우 서비스 제공이 불가능합니다.</span>-->
+<!--               </td>-->
+<!--             </tr>-->
+<!--           </table>-->
+<!--          </div>-->
+<!--          <div style="width:100%; padding-top: 5px;"-->
+<!--               [ngClass]="joinValidation.privacyTerms ? 'ddp-type-ok' :'ddp-type-error'"-->
+<!--               class="ddp-ui-input-form">-->
+<!--            <label class="ddp-label-checkbox" style="float: right">-->
+<!--              <input type="checkbox" (click)="setPrivacyTerms()" [checked]="this.user.privacyTerms">-->
+<!--              <i class="ddp-icon-checkbox"></i>-->
+<!--              <span class="ddp-txt-checkbox">개인정보 수집 이용에 동의합니다.</span>-->
+<!--            </label>-->
+<!--            &lt;!&ndash; error 메시지 &ndash;&gt;-->
+<!--            <span class="ddp-ui-error" *ngIf="joinValidation.privacyTerms == false"-->
+<!--                  style="width:100%; text-align: right; height:1px">-->
+<!--                  <em class="ddp-icon-error"></em>약관에 동의해주세요-->
+<!--              </span>-->
+<!--            &lt;!&ndash; //error 메시지 &ndash;&gt;-->
+<!--          </div>-->
+<!--        </div>-->
+        <!-- // 약관 동의 -->
+
+        <!-- input form -->
+        <!--<div class="ddp-ui-input-form">-->
+          <!--<label class="ddp-label-type">{{'msg.login.join.contact' | translate}}-->
+            <!--&lt;!&ndash; tooltip &ndash;&gt;-->
+            <!--<div class="ddp-ui-tooltip">-->
+              <!--<em class="ddp-icon-question"></em>-->
+              <!--<div class="ddp-ui-tooltip-info">-->
+                <!--<em class="ddp-icon-view-left"></em>-->
+                <!--{{'msg.login.join.contact.description' | translate}}-->
+              <!--</div>-->
+            <!--</div>-->
+            <!--&lt;!&ndash; //tooltip &ndash;&gt;-->
+          <!--</label>-->
+          <!--<div class="ddp-input-check">-->
+            <!--<input type="text" class="ddp-input-type" placeholder="{{'msg.login.join.contact.description' | translate}}" [(ngModel)]="user.tel" input-mask="number" (blur)="validation('tel')" maxlength="11">-->
+          <!--</div>-->
+        <!--</div>-->
+        <!-- //input form -->
+        <!-- 프로필 사진 -->
+        <!--<div class="ddp-ui-input-form ddp-ui-file-select">-->
+          <!--<label class="ddp-label-type">{{'msg.login.join.profile.picture' | translate}}-->
+            <!--&lt;!&ndash; tooltip &ndash;&gt;-->
+            <!--<div class="ddp-ui-tooltip">-->
+              <!--<em class="ddp-icon-question"></em>-->
+              <!--<div class="ddp-ui-tooltip-info">-->
+                <!--<em class="ddp-icon-view-left"></em>-->
+                <!--{{'msg.login.join.profile.picture.description' | translate}}-->
+              <!--</div>-->
+            <!--</div>-->
+            <!--&lt;!&ndash; //tooltip &ndash;&gt;-->
+          <!--</label>-->
+
+          <!--&lt;!&ndash; 사진 &ndash;&gt;-->
+          <!--<span class="ddp-data-photo"><img src="{{defaultProfileImageSrc}}" #profileImage/></span>-->
+          <!--&lt;!&ndash; //사진 &ndash;&gt;-->
+          <!--&lt;!&ndash; button &ndash;&gt;-->
+          <!--<div class="ddp-ui-buttons">-->
+            <!--<a href="javascript:" class="ddp-btn-sbutton"><input type="file" #profileImageFile (change)="profilePreview($event)"-->
+                                                                 <!--ng2FileSelect-->
+                                                                 <!--[uploader]="uploader">{{'msg.login.join.btn.file.load' | translate}}</a>-->
+            <!--<a href="javascript:" class="ddp-btn-sbutton ddp-bg-gray" (click)="removeProfileImage()">{{'msg.comm.btn.del' | translate}}</a>-->
+          <!--</div>-->
+          <!--&lt;!&ndash; //button &ndash;&gt;-->
+
+
+        <!--</div>-->
+        <!-- //프로필 사진 -->
+      </div>
+      <!-- //contents -->
+      <!-- buttons -->
+      <div class="ddp-ui-buttons2">
+        <a href="javascript:" class="ddp-btn-type-popup ddp-bg-black" (click)="join()">{{'msg.login.join.btn.join' | translate}}</a>
+      </div>
+      <!-- //buttons -->
+    </div>
+    <!-- //popup -->
+  </div>
+</div>
