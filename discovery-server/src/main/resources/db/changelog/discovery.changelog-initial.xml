@@ -3194,7 +3194,7 @@
             <column name="MODIFIED_BY" value="admin" />
             <column name="MODIFIED_TIME" valueDate="${now}" />
             <column name="VERSION" value="0" />
-            <column name="USER_EMAIL" value="admin@metatron.com" />
+            <column name="USER_EMAIL" value="admin@rivus.ai" />
             <column name="USER_FULL_NAME" value="Administrator" />
             <column name="USER_IMAGE_URL" />
             <column name="USER_STATUS" value="ACTIVATED" />

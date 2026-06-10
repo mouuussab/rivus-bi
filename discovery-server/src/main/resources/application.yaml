@@ -345,7 +345,7 @@ polaris:
     baseDir: ${java.io.tmpdir:-/tmp}
     sparkDir: /usr/local/spark
   mail:
-    admin: admin@metatron.com
+    admin: admin@rivus.ai
     baseUrl: http://localhost:8180
   workbench:
     defaultResultSize: 1000

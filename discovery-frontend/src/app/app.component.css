@@ -12,3 +12,14 @@
  * limitations under the License.
  */
 
+.rivus-bi-logo-loading {
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 32px;
+  font-weight: 800;
+  color: #272950;
+  text-align: center;
+  letter-spacing: -0.5px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+}
+

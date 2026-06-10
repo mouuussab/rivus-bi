@@ -88,9 +88,7 @@
     <li *ngIf="permission.exploreData" [ngClass]="{'ddp-selected': lnbManager.exploreData.fold == false}" >
       <div class="ddp-wrap-listmenu">
         <a href="javascript:" (click)="depth1Menu1ClickListener( 'EXPLOREDATA' )">
-          <span class="ddp-txt-lnbmenu">{{'msg.comm.menu.title.explore-data' | translate}}
-            <span class="ddp-tag-beta">Beta</span>
-          </span>
+          <span class="ddp-txt-lnbmenu">{{'msg.comm.menu.title.explore-data' | translate}}</span>
           <em class="ddp-icon-menuview"></em>
         </a>
         <!-- sub -->

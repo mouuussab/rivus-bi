@@ -3,7 +3,7 @@ INSERT INTO dataconnection(dc_implementor, id, created_by, created_time, modifie
 
 INSERT INTO ingestion(id, ingest_data_type, ingest_data_database, ingest_data_schema, ingest_data_query) values(420, 'TABLE', NULL, NULL, 'sales');
 
-INSERT INTO datasource(id, ds_name, ds_alias, ds_owner_id, ds_desc, ds_filter_at_select, ds_type, ds_conn_type, ds_granularity, ds_enabled, ds_status, dc_id, ingest_id, version, created_time, created_by, modified_time, modified_by) VALUES('ds-42', 'sales_phoenix', 'sales_phoenix_live', 'polaris@metatron.com', 'sales data (2011~2014)', true, 'MASTER', 'LIVE', 'DAY', true, 'ENABLED', 'dc-phoenix-01', 420, 1.0, NOW(), 'admin@metatron.com',  NOW(), 'admin@metatron.com');
+INSERT INTO datasource(id, ds_name, ds_alias, ds_owner_id, ds_desc, ds_filter_at_select, ds_type, ds_conn_type, ds_granularity, ds_enabled, ds_status, dc_id, ingest_id, version, created_time, created_by, modified_time, modified_by) VALUES('ds-42', 'sales_phoenix', 'sales_phoenix_live', 'polaris@metatron.com', 'sales data (2011~2014)', true, 'MASTER', 'LIVE', 'DAY', true, 'ENABLED', 'dc-phoenix-01', 420, 1.0, NOW(), 'admin@rivus.ai',  NOW(), 'admin@rivus.ai');
 
 INSERT INTO field(id, ds_id, seq, field_name, field_type, bi_type) values(10042000, 'ds-42', 0, 'OrderDate', 'TIMESTAMP', 'DIMENSION' );
 INSERT INTO field(id, ds_id, seq, field_name, field_type, bi_type) values(10042001, 'ds-42', 1, 'Category', 'TEXT', 'DIMENSION' );

@@ -1,6 +1,6 @@
 -- User 정보
 INSERT INTO users(ID, CREATED_BY, CREATED_TIME, MODIFIED_BY, MODIFIED_TIME, VERSION, USER_EMAIL, USER_FULL_NAME, USER_IMAGE_URL, USER_STATUS, USER_STATUS_MSG, USER_TEL, USER_NAME, USER_PASSWORD) VALUES
-('admin', 'admin', now(), 'admin', now(), 0, 'admin@metatron.com', 'Administrator', NULL, 'ACTIVATED', NULL, NULL, 'admin', 'admin'),
+('admin', 'admin', now(), 'admin', now(), 0, 'admin@rivus.ai', 'Administrator', NULL, 'ACTIVATED', NULL, NULL, 'admin', 'admin'),
 ('polaris', 'admin', now(), 'admin', now(), 0, 'polaris@metatron.com', 'Polaris', NULL, 'ACTIVATED', NULL, NULL, 'polaris', 'polaris'),
 ('metatron', 'admin', now(), 'admin', now(), 0, 'metatron@metatron.com', 'Metatron', NULL, 'ACTIVATED', NULL, NULL, 'metatron', 'metatron'),
 ('guest', 'admin', now(), 'admin', now(), 0, 'guest@metatron.com', 'Guest', NULL, 'ACTIVATED', NULL, NULL, 'guest', 'guest');

@@ -75,9 +75,9 @@ public class MetatronProperties {
 
   public static class Mail {
 
-        private String from = "admin@metatron.com";
+        private String from = "admin@rivus.ai";
 
-        private String admin = "admin@metatron.com";
+        private String admin = "admin@rivus.ai";
 
         private String baseUrl = "";
 
