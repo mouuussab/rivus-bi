@@ -84,3 +84,10 @@ java -Dfile.encoding=UTF-8 -Xms512m -Xmx1024m -Dspring.config.location=file:conf
 - Firewall/Network: ensure port 8180 is reachable from your client and no host firewall blocks it. For local tests use `http://localhost:8180`; for remote access use the machine IP (e.g., `http://192.168.x.y:8180`).
 
 If the server crashes or the browser shows ERR_CONNECTION_REFUSED, collect `/tmp/rivus-server.log` and the timestamp from the browser DevTools and open an issue or contact for troubleshooting.
+
+## Screenshots
+
+![Rivus dashboard](docs/screenshots/rivus-bi/rivus%20dashboard.png)
+
+![Rivus login](docs/screenshots/rivus-bi/rivus%20login.png)
+
