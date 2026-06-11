@@ -66,7 +66,7 @@ Stop the running server instance with:
 ./stop_rivus_bi.sh
 ```
 
-## Running on another machine (Checklist)
+## Important notes
 
 Follow this checklist to run Rivus BI on a fresh machine and avoid the issues encountered here:
 
