@@ -65,3 +65,10 @@ Stop the running server instance with:
 ./stop_rivus_bi.sh
 ```
 
+
+## Screenshots
+
+![Rivus dashboard](docs/screenshots/rivus-bi/rivus%20dashboard.png)
+
+![Rivus login](docs/screenshots/rivus-bi/rivus%20login.png)
+
