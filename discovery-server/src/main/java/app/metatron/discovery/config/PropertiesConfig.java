@@ -14,6 +14,7 @@
 
 package app.metatron.discovery.config;
 
+import org.pf4j.PluginManager;
 import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -67,6 +68,11 @@ public class PropertiesConfig {
   public MessageSourceAccessor messageSourceAccessor() {
     MessageSourceAccessor messageSourceAccessor = new MessageSourceAccessor(messageSource());
     return messageSourceAccessor;
+  }
+
+  @Bean
+  public PluginManager pluginManager() {
+    return new NoOpPluginManager();
   }
 
 }

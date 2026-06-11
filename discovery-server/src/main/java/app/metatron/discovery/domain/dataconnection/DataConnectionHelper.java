@@ -70,7 +70,7 @@ public class DataConnectionHelper {
   @Qualifier("CachedUserJdbcConnector")
   CachedUserJdbcConnector defaultConnector0;
 
-  @Autowired
+  @Autowired(required = false)
   PluginManager pluginManager0;
 
   private static final Logger LOGGER = LoggerFactory.getLogger(DataConnectionHelper.class);

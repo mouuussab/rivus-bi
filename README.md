@@ -60,8 +60,27 @@ The script locates the compiled distribution, initializes the default configurat
   - **Password**: `admin` (or the custom password set during configuration)
 
 ### 5. Stopping the Application
+
 Stop the running server instance with:
 ```bash
 ./stop_rivus_bi.sh
 ```
 
+## Running on another machine (Checklist)
+
+Follow this checklist to run Rivus BI on a fresh machine and avoid the issues encountered here:
+
+- Install JDK 8 and set JAVA_HOME: ensure `JAVA_HOME` points to Java 8. The start script prefers `/home/rivus/tools/jdk8` if present; otherwise update `JAVA_HOME` to your system JDK (e.g. `/usr/lib/jvm/java-8-openjdk-amd64`).
+- Build the project: run `mvn clean install -Dmaven.test.skip=true` to produce the distribution under `discovery-distribution/target/`.
+- Use the provided start script: run `./start_rivus_bi.sh` from the repo root. The script will create or update `conf/metatron-env.sh` (idempotently) and will create `conf/application-local.yml` with sensible defaults (bind to `0.0.0.0`, port `8180`, `spring.cache.type: simple`, and Infinispan disabled).
+- If your deployment requires plugins, restore the PluginManager and provide the plugins directory; the current default in this repo is a NoOp PluginManager to avoid plugin-related crashes during local runs.
+- Logs: runtime logs are written to `/tmp/rivus-server.log` by the start script; run the server in foreground for debugging with:
+
+```bash
+# from METATRON_HOME (distribution root)
+java -Dfile.encoding=UTF-8 -Xms512m -Xmx1024m -Dspring.config.location=file:conf/application-local.yml -jar discovery-server-*.jar
+```
+
+- Firewall/Network: ensure port 8180 is reachable from your client and no host firewall blocks it. For local tests use `http://localhost:8180`; for remote access use the machine IP (e.g., `http://192.168.x.y:8180`).
+
+If the server crashes or the browser shows ERR_CONNECTION_REFUSED, collect `/tmp/rivus-server.log` and the timestamp from the browser DevTools and open an issue or contact for troubleshooting.

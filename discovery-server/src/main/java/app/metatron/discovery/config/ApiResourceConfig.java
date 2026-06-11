@@ -187,7 +187,7 @@ public class ApiResourceConfig extends WebMvcConfigurerAdapter {
   @Autowired
   MetatronProperties metatronProperties;
 
-  @Autowired
+  @Autowired(required = false)
   PluginManager pluginManager;
 
   @Value("${polaris.resources.cache.cacheControl.max-age: 604800}")
@@ -273,9 +273,11 @@ public class ApiResourceConfig extends WebMvcConfigurerAdapter {
 
     //add resource for extension
     // /plugins/plugin-id/**  -->  file:/plugin-path/classes/
-    for (PluginWrapper pluginWrapper : pluginManager.getResolvedPlugins()) {
-      registry.addResourceHandler("/extensions/" + pluginWrapper.getPluginId() + "/**")
-              .addResourceLocations("file:" + pluginWrapper.getPluginPath().toAbsolutePath().toString() + "/classes/");
+    if (pluginManager != null) {
+      for (PluginWrapper pluginWrapper : pluginManager.getResolvedPlugins()) {
+        registry.addResourceHandler("/extensions/" + pluginWrapper.getPluginId() + "/**")
+                .addResourceLocations("file:" + pluginWrapper.getPluginPath().toAbsolutePath().toString() + "/classes/");
+      }
     }
   }
 

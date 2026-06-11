@@ -40,7 +40,7 @@ public class SimpleJdbcConnector extends AbstractJdbcConnector {
 
   private static final Logger LOGGER = LoggerFactory.getLogger(SimpleJdbcConnector.class);
 
-  @Autowired
+  @Autowired(required = false)
   PluginManager pluginManager;
 
   @Override
