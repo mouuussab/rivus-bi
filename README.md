@@ -1,93 +1,53 @@
 # Rivus BI
 
-Rivus BI is an end-to-end big data self-discovery solution, built for interactive data analysis, preparation, and beautiful visualization.
+Welcome to **Rivus BI**, a powerful and highly scalable Business Intelligence tool powered by an embedded Apache Druid analytical engine. This repository contains the backend and frontend components needed to manage and explore your Data Storage.
 
-## Key Features
-
-- **Interactive Dashboards**: Numerous preloaded charts and customizable data widgets.
-- **Data Wrangling & Preparation**: GUI-based data wrangling and query (SQL) based exploration.
-- **Various Data Source Connections**: Connect to database engines, Hive, or Kafka streams.
-- **Geo-Spatial Analysis**: Geospatial analysis support with map visualizations.
-- **Metadata Management**: Fine-grained schema management and data dictionary options.
-- **Access Control**: Workspace-level permissions and fine-grained access control of users.
-- **Full API Support**: Completely backed by APIs for easy integration.
-
----
+If you are a complete beginner, don't worry! This guide will walk you through exactly how to run this project on your machine.
 
 ## Prerequisites
 
-Before building and running the project, make sure the following dependencies are installed:
+Before you start, make sure you have the following installed on your computer:
+1. **Java 8**: Rivus BI requires Java 8. Ensure `JAVA_HOME` is set properly.
+2. **Node.js**: Required to build the frontend.
+3. **Maven**: Required to build the backend Java application.
+4. **Python 3**: Used to start the embedded database.
 
-1. **Java Development Kit (JDK) 8**: The backend compilation and runtime require JDK 8. Ensure `JAVA_HOME` is set to your JDK 8 path.
-2. **Apache Maven**: Required to compile the project.
-3. **Node.js & NPM**: The frontend build uses Node.js `v14.15.4` and NPM `6.14.10`. These will automatically be downloaded and installed locally under `discovery-frontend` during the Maven build using the `frontend-maven-plugin`.
-4. **Git**: Required to clone the repository.
+## How to Start Rivus BI
 
----
+We have provided simple, automated scripts to make running Rivus BI as easy as double-clicking a button.
 
-## Build and Run Instructions
+1. **Open your terminal** and navigate to the `rivus-bi` folder.
+   ```bash
+   cd /path/to/rivus-bi
+   ```
 
-### 1. Clone the Repository
-```bash
-git clone https://github.com/mouuussab/rivus-bi.git
-cd rivus-bi
-```
+2. **Start the application** by running the start script:
+   ```bash
+   ./start_rivus_bi.sh
+   ```
+   *What this script does:* 
+   - It starts an embedded **H2 Database** on port 9092.
+   - It spins up the **Apache Druid** analytical engine (this is what holds your data and makes it incredibly fast to query).
+   - It starts the **Rivus BI Web Server** on port `8180`.
 
-### 2. Set Environment Variables
-Point your environment to Java 8 and make sure Maven is available in your shell `PATH`:
-```bash
-export JAVA_HOME="/path/to/jdk8"
-export PATH="$JAVA_HOME/bin:$PATH"
-```
+3. **Access the Web Interface**
+   Once the terminal says the server has started, open your web browser and go to:
+   ```
+   http://localhost:8180
+   ```
+   *Default Login:* `admin` / `admin`
 
-### 3. Build the Project
-Compile the frontend and backend, then package the final server distribution by running:
-```bash
-mvn clean install -Dmaven.test.skip=true
-```
-*(This process compiles the Java classes, packages the Angular frontend production bundle, and builds the target distribution package in `discovery-distribution/target/`.)*
+## How to Stop Rivus BI
 
-### 4. Running the Application
-Start the Rivus BI server using the root startup script:
-```bash
-./start_rivus_bi.sh
-```
-The script locates the compiled distribution, initializes the default configuration profiles (`application-config.yaml` and `metatron-env.sh`), and starts the service in daemon mode.
+When you are finished using Rivus BI, you should stop it properly to avoid leaving background processes running on your computer.
 
-- **Access Console**: Open your browser and navigate to `http://localhost:8180` (or `http://localhost:8180/app/v2/user/login`).
-- **Default Login**:
-  - **Username**: `admin`
-  - **Password**: `admin` (or the custom password set during configuration)
+1. In your terminal, run:
+   ```bash
+   ./stop_rivus_bi.sh
+   ```
+   This will safely shut down the web server, Apache Druid, and the H2 database.
 
-### 5. Stopping the Application
+## Next Steps
 
-Stop the running server instance with:
-```bash
-./stop_rivus_bi.sh
-```
-
-## Important notes
-
-Follow this checklist to run Rivus BI on a fresh machine and avoid the issues encountered here:
-
-- Install JDK 8 and set JAVA_HOME: ensure `JAVA_HOME` points to Java 8. The start script prefers `/home/rivus/tools/jdk8` if present; otherwise update `JAVA_HOME` to your system JDK (e.g. `/usr/lib/jvm/java-8-openjdk-amd64`).
-- Build the project: run `mvn clean install -Dmaven.test.skip=true` to produce the distribution under `discovery-distribution/target/`.
-- Use the provided start script: run `./start_rivus_bi.sh` from the repo root. The script will create or update `conf/metatron-env.sh` (idempotently) and will create `conf/application-local.yml` with sensible defaults (bind to `0.0.0.0`, port `8180`, `spring.cache.type: simple`, and Infinispan disabled).
-- If your deployment requires plugins, restore the PluginManager and provide the plugins directory; the current default in this repo is a NoOp PluginManager to avoid plugin-related crashes during local runs.
-- Logs: runtime logs are written to `/tmp/rivus-server.log` by the start script; run the server in foreground for debugging with:
-
-```bash
-# from METATRON_HOME (distribution root)
-java -Dfile.encoding=UTF-8 -Xms512m -Xmx1024m -Dspring.config.location=file:conf/application-local.yml -jar discovery-server-*.jar
-```
-
-- Firewall/Network: ensure port 8180 is reachable from your client and no host firewall blocks it. For local tests use `http://localhost:8180`; for remote access use the machine IP (e.g., `http://192.168.x.y:8180`).
-
-If the server crashes or the browser shows ERR_CONNECTION_REFUSED, collect `/tmp/rivus-server.log` and the timestamp from the browser DevTools and open an issue or contact for troubleshooting.
-
-## Screenshots
-
-![Rivus dashboard](docs/screenshots/rivus-bi/rivus%20dashboard.png)
-
-![Rivus login](docs/screenshots/rivus-bi/rivus%20login.png)
-
+Rivus BI is part of a larger ecosystem! Once you have prepared your data snapshots in Rivus BI, you can seamlessly connect them to AI. 
+Check out the **[bi-ai-link](https://github.com/mouuussab/bi-ai-link)** repository to set up the automated Data Lake bridge!
