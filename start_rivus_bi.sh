@@ -63,6 +63,36 @@ infinispan:
 EOF
 fi
 
+# Start Druid (if present) then Rivus BI
+DRUID_HOME=$(find "$ROOT_DIR/third_party" -maxdepth 4 -type d -name 'druid-2021.2' -print -quit || true)
+if [ -n "$DRUID_HOME" ] && [ -f "$DRUID_HOME/start-single.sh" ]; then
+  echo "Found Druid at $DRUID_HOME"
+  PIDFILE=/tmp/druid.pid
+  # If pidfile exists and process is alive, skip starting
+  if [ -f "$PIDFILE" ] && ps -p "$(cat \"$PIDFILE\")" >/dev/null 2>&1; then
+    echo "Druid pidfile exists and process $(cat \"$PIDFILE\") is running"
+  elif ss -tuln 2>/dev/null | grep -q ':8081\b'; then
+    echo "Druid appears to be already running (port 8081)"
+  else
+    echo "Starting Druid (single) ..."
+    (cd "$DRUID_HOME" && nohup ./start-single.sh > /tmp/druid.log 2>&1 & echo $! > /tmp/druid.pid)
+    sleep 1
+    if [ -f "$PIDFILE" ]; then
+      echo "Druid started with PID $(cat \"$PIDFILE\")"
+    fi
+    for i in $(seq 1 60); do
+      sleep 2
+      if curl -s http://127.0.0.1:8081/status/health 2>/dev/null | grep -q 'true'; then
+        echo "Druid coordinator healthy"
+        break
+      fi
+      echo "Waiting for Druid (attempt $i/60)..."
+    done
+  fi
+else
+  echo "No Druid distribution found under $ROOT_DIR/third_party"
+fi
+
 # Start Rivus BI: prefer directly running the discovery server jar with local config; fallback to metatron.sh
 echo "Starting Rivus BI..."
 cd "$METATRON_HOME"
