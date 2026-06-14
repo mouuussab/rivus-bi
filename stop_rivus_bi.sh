@@ -16,7 +16,7 @@ fi
 
 echo "Found Rivus BI Home: $METATRON_HOME"
 
-# Run the metatron stop script
+# Run the stop script
 echo "Stopping Rivus BI..."
 cd "$METATRON_HOME"
-./bin/metatron.sh stop
+./bin/metatron.sh stop | sed 's/metatron/rivus_bi/g'

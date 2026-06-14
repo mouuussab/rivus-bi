@@ -22,6 +22,7 @@ Before building and running the project, make sure the following dependencies ar
 2. **Apache Maven**: Required to compile the project.
 3. **Node.js & NPM**: The frontend build uses Node.js `v14.15.4` and NPM `6.14.10`. These will automatically be downloaded and installed locally under `discovery-frontend` during the Maven build using the `frontend-maven-plugin`.
 4. **Git**: Required to clone the repository.
+5. **Metatron Custom Druid**: Requires Metatron's customized and patched Druid engine. Download it from the [Google Drive link](https://drive.google.com/file/d/1q_iL574KOQFTDbAVqpKOrDUiAdW_x9yv/view).
 
 ---
 
@@ -47,7 +48,16 @@ mvn clean install -Dmaven.test.skip=true
 ```
 *(This process compiles the Java classes, packages the Angular frontend production bundle, and builds the target distribution package in `discovery-distribution/target/`.)*
 
-### 4. Running the Application
+### 4. Running the Druid Engine
+Extract the downloaded Metatron customized Druid archive (`druid-2021.2.tar.gz`) and start it inside its directory:
+```bash
+tar -xzf druid-2021.2.tar.gz
+cd druid-2021.2
+JAVA_HOME=/path/to/jdk8 PATH=$JAVA_HOME/bin:$PATH ./start-single.sh
+```
+*(This starts the custom Druid services: Zookeeper, Coordinator, Broker, Historical, MiddleManager, and Overlord).*
+
+### 5. Running the Application
 Start the Rivus BI server using the root startup script:
 ```bash
 ./start_rivus_bi.sh
@@ -59,10 +69,16 @@ The script locates the compiled distribution, initializes the default configurat
   - **Username**: `admin`
   - **Password**: `admin` (or the custom password set during configuration)
 
-### 5. Stopping the Application
+### 6. Stopping the Application
 Stop the running server instance with:
 ```bash
 ./stop_rivus_bi.sh
+```
+
+To stop the custom Druid engine:
+```bash
+cd druid-2021.2
+./stop-single.sh
 ```
 
 

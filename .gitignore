@@ -73,3 +73,6 @@ discovery-frontend/src/environments/build.env.ts
 
 # extensions target dir
 **/extensions/
+
+# Local customized Druid
+/druid-2021.2/

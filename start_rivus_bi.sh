@@ -27,11 +27,11 @@ if [ ! -f "$CONF_DIR/metatron-env.sh" ]; then
   cp "$CONF_DIR/metatron-env.sh.templete" "$CONF_DIR/metatron-env.sh"
 fi
 
-# Run the metatron start script
+# Run the start script
 echo "Starting Rivus BI..."
 cd "$METATRON_HOME"
-./bin/metatron.sh start
+./bin/metatron.sh start | sed 's/metatron/rivus_bi/g'
 
 echo "Rivus BI startup initiated."
-echo "To check status: ./bin/metatron.sh status (run inside $METATRON_HOME)"
+echo "To check status: ./bin/metatron.sh status (run inside $METATRON_HOME | sed 's/metatron/rivus_bi/g')"
 echo "To stop: $ROOT_DIR/stop_rivus_bi.sh"
